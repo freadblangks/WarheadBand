@@ -120,7 +120,7 @@ public:
     {
         ASSERT(script);
 
-        if (!_checkMemory(script))
+        if (!IsScriptUsing(script))
             return;
 
         if (script->isAfterLoadScript())
@@ -129,9 +129,22 @@ public:
             AddScript(is_script_database_bound<TScript>{}, script);
     }
 
+    // Add after load db scripts
     static void AddALScripts()
     {
-        for (ScriptVectorIterator it = ALScripts.begin(); it != ALScripts.end(); ++it)
+        if (ALScripts.empty())
+            return;
+
+        for (auto itr : ALScripts)
+        {
+            TScript* const script = itr;
+
+            script->checkValidity();
+
+            AddScript(is_script_database_bound<TScript>{}, script);
+        }
+
+        /*for (ScriptVectorIterator it = ALScripts.begin(); it != ALScripts.end(); ++it)
         {
             TScript* const script = *it;
 
@@ -139,7 +152,7 @@ public:
 
             if (is_script_database_bound<TScript>::value)
             {
-                if (!_checkMemory(script))
+                if (!IsScriptUsing(script))
                 {
                     return;
                 }
@@ -171,7 +184,7 @@ public:
                     else
                     {
                         // If the script is already assigned -> delete it!
-                        LOG_ERROR("server", "Script named '%s' is already assigned (two or more scripts have the same name), so the script can't work, aborting...",
+                        LOG_ERROR("scripts", "Script named '%s' is already assigned (two or more scripts have the same name), so the script can't work, aborting...",
                             script->GetName().c_str());
 
                         ABORT(); // Error that should be fixed ASAP.
@@ -191,7 +204,7 @@ public:
                 ScriptPointerList[_scriptIdCounter++] = script;
                 sScriptMgr->IncrementScriptCount();
             }
-        }
+        }*/
     }
 
     // Gets a script by its ID (assigned by ObjectMgr).
@@ -207,15 +220,15 @@ public:
 private:
     // See if the script is using the same memory as another script. If this happens, it means that
     // someone forgot to allocate new memory for a script.
-    static bool _checkMemory(TScript* const script)
+    static bool IsScriptUsing(TScript* const script)
     {
         // See if the script is using the same memory as another script. If this happens, it means that
         // someone forgot to allocate new memory for a script.
-        for (ScriptMapIterator it = ScriptPointerList.begin(); it != ScriptPointerList.end(); ++it)
+        for (auto const& [scriptID, Tscript] : ScriptPointerList)
         {
-            if (it->second == script)
+            if (Tscript == script)
             {
-                LOG_ERROR("server", "Script '%s' has same memory pointer as '%s'.",
+                LOG_ERROR("scripts", "Script '%s' has same memory pointer as '%s'.",
                     script->GetName().c_str(), it->second->GetName().c_str());
 
                 return false;
@@ -223,6 +236,36 @@ private:
         }
 
         return true;
+    }
+
+    // Adds a database bound script
+    static void AddScript(std::true_type, TScript* const script)
+    {
+        // Get an ID for the script. An ID only exists if it's a script that is assigned in the database
+        // through a script name (or similar).
+        uint32 id = sObjectMgr->GetScriptId(script->GetName());
+
+        // The script uses a script name from database, but isn't assigned to anything.
+        if (!id)
+        {
+            LOG_ERROR("sql.sql", "Script named '%s' does not have a script name assigned in database.", script->GetName().c_str());
+            return;
+        }
+
+        // If the script names match...
+        if (!_checkMemory(script))
+            return;
+
+        ScriptPointerList[id] = script;
+        sScriptMgr->IncrementScriptCount();
+    }
+
+    // Adds a non database bound script
+    static void AddScript(std::false_type, TScript* const script)
+    {
+        // We're dealing with a code-only script; just add it.
+        ScriptPointerList[_scriptIdCounter++] = script;
+        sScriptMgr->IncrementScriptCount();
     }
 
     // Counter used for code-only scripts.
