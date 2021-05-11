@@ -911,7 +911,7 @@ bool Creature::AIM_Destroy()
     return true;
 }
 
-bool Creature::AIM_Initialize(CreatureAI* ai)
+bool Creature::AIM_Create(CreatureAI* ai /*= nullptr*/)
 {
     // make sure nothing can change the AI during AI update
     if (m_AI_locked)
@@ -924,16 +924,26 @@ bool Creature::AIM_Initialize(CreatureAI* ai)
 
     AIM_Destroy();
 
-    // Xinef: called in add to world
-    //Motion_Initialize();
-
     i_AI = ai ? ai : FactorySelector::selectAI(this);
+}
+
+void Creature::AI_InitializeAndEnable()
+{
     IsAIEnabled = true;
     i_AI->InitializeAI();
 
     // Xinef: Initialize vehicle if it is not summoned!
     if (GetVehicleKit() && m_spawnId)
         GetVehicleKit()->Reset();
+}
+
+bool Creature::AIM_Initialize(CreatureAI* ai)
+{
+    if (!AIM_Create(ai))
+        return false;
+
+    AI_InitializeAndEnable();
+
     return true;
 }
 

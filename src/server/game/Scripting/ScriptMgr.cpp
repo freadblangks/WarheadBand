@@ -432,15 +432,13 @@ class CreatureGameObjectScriptRegistrySwapHooks
         if (!creature->IsAlive())
             return;
 
-        creature->AI()->InitializeAI();
-        if (creature->GetVehicleKit())
-            creature->GetVehicleKit()->Reset();
+        creature->AI_InitializeAndEnable();
         creature->AI()->EnterEvadeMode();
 
         // Cast a dummy visual spell asynchronously here to signal
         // that the AI was hot swapped
         creature->m_Events.AddEvent(new AsyncCastHotswapEffectEvent(creature),
-            creature->m_Events.CalculateTime(0s));
+            creature->m_Events.CalculateTime(0));
     }
 
     // Hook which is called after a gameobject was swapped
@@ -791,9 +789,9 @@ public:
 
             if (script->IsAfterLoadDB())
             {
-                _alScripts.push_back(std::move(script_ptr));
+                _alScripts.push_back(script);
                 return;
-            } 
+            }
 
             // If the script isn't assigned -> assign it!
             _scripts.insert(std::make_pair(id, std::move(script_ptr)));
@@ -824,7 +822,7 @@ public:
 
         for (auto itr : _alScripts)
         {
-            AddScript(itr.get());
+            AddScript(itr);
         }
 
         _alScripts.clear();
@@ -874,7 +872,7 @@ private:
     std::unordered_set<uint32> _recently_added_ids;
 
     // After database load scripts
-    std::vector<std::unique_ptr<ScriptType>> _alScripts;
+    std::vector<ScriptType*> _alScripts;
 };
 
 /// This hook is responsible for swapping CommandScript's
@@ -959,7 +957,7 @@ public:
 
         if (script->IsAfterLoadDB())
         {
-            _alScripts.push_back(std::move(script_ptr));
+            _alScripts.push_back(script);
             return;
         }
 
@@ -975,7 +973,7 @@ public:
 
         for (auto itr : _alScripts)
         {
-            AddScript(script.get());
+            AddScript(itr);
         }
 
         _alScripts.clear();
@@ -990,7 +988,7 @@ private:
     ScriptStoreType _scripts;
 
     // After database load scripts
-    std::vector<std::unique_ptr<ScriptType>> _alScripts;
+    std::vector<ScriptType*> _alScripts;
 };
 
 struct TSpellSummary

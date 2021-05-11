@@ -521,6 +521,8 @@ public:
     [[nodiscard]] bool IsEvadingAttacks() const { return IsInEvadeMode() || CanNotReachTarget(); }
 
     bool AIM_Destroy();
+    bool AIM_Create(CreatureAI* ai = nullptr);
+    void AI_InitializeAndEnable();
     bool AIM_Initialize(CreatureAI* ai = nullptr);
     void Motion_Initialize();
 
