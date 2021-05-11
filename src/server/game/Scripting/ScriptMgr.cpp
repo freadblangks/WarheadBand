@@ -143,68 +143,6 @@ public:
 
             AddScript(is_script_database_bound<TScript>{}, script);
         }
-
-        /*for (ScriptVectorIterator it = ALScripts.begin(); it != ALScripts.end(); ++it)
-        {
-            TScript* const script = *it;
-
-            script->checkValidity();
-
-            if (is_script_database_bound<TScript>::value)
-            {
-                if (!IsScriptUsing(script))
-                {
-                    return;
-                }
-
-                // Get an ID for the script. An ID only exists if it's a script that is assigned in the database
-                // through a script name (or similar).
-                uint32 id = sObjectMgr->GetScriptId(script->GetName().c_str());
-                if (id)
-                {
-                    // Try to find an existing script.
-                    bool existing = false;
-                    for (ScriptMapIterator it = ScriptPointerList.begin(); it != ScriptPointerList.end(); ++it)
-                    {
-                        // If the script names match...
-                        if (it->second->GetName() == script->GetName())
-                        {
-                            // ... It exists.
-                            existing = true;
-                            break;
-                        }
-                    }
-
-                    // If the script isn't assigned -> assign it!
-                    if (!existing)
-                    {
-                        ScriptPointerList[id] = script;
-                        sScriptMgr->IncrementScriptCount();
-                    }
-                    else
-                    {
-                        // If the script is already assigned -> delete it!
-                        LOG_ERROR("scripts", "Script named '%s' is already assigned (two or more scripts have the same name), so the script can't work, aborting...",
-                            script->GetName().c_str());
-
-                        ABORT(); // Error that should be fixed ASAP.
-                    }
-                }
-                else
-                {
-                    // The script uses a script name from database, but isn't assigned to anything.
-                    if (script->GetName().find("Smart") == std::string::npos)
-                        LOG_ERROR("sql.sql", "Script named '%s' is not assigned in the database.",
-                            script->GetName().c_str());
-                }
-            }
-            else
-            {
-                // We're dealing with a code-only script; just add it.
-                ScriptPointerList[_scriptIdCounter++] = script;
-                sScriptMgr->IncrementScriptCount();
-            }
-        }*/
     }
 
     // Gets a script by its ID (assigned by ObjectMgr).
@@ -241,15 +179,52 @@ private:
     // Adds a database bound script
     static void AddScript(std::true_type, TScript* const script)
     {
+        if (!IsScriptUsing(script))
+        {
+            return;
+        }
+
         // Get an ID for the script. An ID only exists if it's a script that is assigned in the database
         // through a script name (or similar).
         uint32 id = sObjectMgr->GetScriptId(script->GetName());
 
         // The script uses a script name from database, but isn't assigned to anything.
-        if (!id)
+        if (id)
         {
-            LOG_ERROR("sql.sql", "Script named '%s' does not have a script name assigned in database.", script->GetName().c_str());
-            return;
+            // Try to find an existing script.
+            bool existing = false;
+            for (ScriptMapIterator it = ScriptPointerList.begin(); it != ScriptPointerList.end(); ++it)
+            {
+                // If the script names match...
+                if (it->second->GetName() == script->GetName())
+                {
+                    // ... It exists.
+                    existing = true;
+                    break;
+                }
+            }
+
+            // If the script isn't assigned -> assign it!
+            if (!existing)
+            {
+                ScriptPointerList[id] = script;
+                sScriptMgr->IncrementScriptCount();
+            }
+            else
+            {
+                // If the script is already assigned -> delete it!
+                LOG_ERROR("scripts", "Script named '%s' is already assigned (two or more scripts have the same name), so the script can't work, aborting...",
+                    script->GetName().c_str());
+
+                ABORT(); // Error that should be fixed ASAP.
+            }
+        }
+        else
+        {
+            // The script uses a script name from database, but isn't assigned to anything.
+            if (script->GetName().find("Smart") == std::string::npos)
+                LOG_ERROR("sql.sql", "Script named '%s' is not assigned in the database.",
+                    script->GetName().c_str());
         }
 
         // If the script names match...
