@@ -894,6 +894,23 @@ void Creature::DoFleeToGetAssistance()
     }
 }
 
+bool Creature::AIM_Destroy()
+{
+    if (m_AI_locked)
+    {
+        LOG_DEBUG("scripts", "AIM_Destroy: failed to destroy, locked.");
+        return false;
+    }
+
+    ASSERT(!i_disabledAI, "The disabled AI wasn't cleared!");
+
+    delete i_AI;
+    i_AI = nullptr;
+
+    IsAIEnabled = false;
+    return true;
+}
+
 bool Creature::AIM_Initialize(CreatureAI* ai)
 {
     // make sure nothing can change the AI during AI update
@@ -905,13 +922,12 @@ bool Creature::AIM_Initialize(CreatureAI* ai)
         return false;
     }
 
-    UnitAI* oldAI = i_AI;
+    AIM_Destroy();
 
     // Xinef: called in add to world
     //Motion_Initialize();
 
     i_AI = ai ? ai : FactorySelector::selectAI(this);
-    delete oldAI;
     IsAIEnabled = true;
     i_AI->InitializeAI();
 

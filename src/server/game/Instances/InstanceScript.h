@@ -35,6 +35,7 @@ class Unit;
 class Player;
 class GameObject;
 class Creature;
+class ModuleReference;
 
 typedef std::set<GameObject*> DoorSet;
 typedef std::set<Creature*> MinionSet;
@@ -138,7 +139,7 @@ typedef std::map<uint32 /*entry*/, MinionInfo> MinionInfoMap;
 class WH_GAME_API InstanceScript : public ZoneScript
 {
 public:
-    explicit InstanceScript(Map* map) : instance(map), completedEncounters(0) {}
+    explicit InstanceScript(Map* map);
 
     ~InstanceScript() override {}
 
@@ -246,6 +247,11 @@ private:
     DoorInfoMap doors;
     MinionInfoMap minions;
     uint32 completedEncounters; // completed encounter mask, bit indexes are DungeonEncounter.dbc boss numbers, used for packets
+
+#ifdef WARHEAD_API_USE_DYNAMIC_LINKING
+    // Strong reference to the associated script module
+    std::shared_ptr<ModuleReference> module_reference;
+#endif //WARHEAD_API_USE_DYNAMIC_LINKING
 };
 
 #endif

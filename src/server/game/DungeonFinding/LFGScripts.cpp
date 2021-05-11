@@ -31,7 +31,6 @@
 
 namespace lfg
 {
-
     LFGPlayerScript::LFGPlayerScript() : PlayerScript("LFGPlayerScript")
     {
     }
@@ -309,6 +308,12 @@ namespace lfg
             sLFGMgr->LeaveLfg(leader);
             sLFGMgr->LeaveAllLfgQueues(leader, true);
         }
+    }
+
+    void AddSC_LFGScripts()
+    {
+        new LFGPlayerScript();
+        new LFGGroupScript();
     }
 
 } // namespace lfg

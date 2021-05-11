@@ -16,9 +16,9 @@
  */
 
 // Utility macros to refer to the script registry.
-#define SCR_REG_MAP(T) ScriptRegistry<T>::ScriptMap
-#define SCR_REG_ITR(T) ScriptRegistry<T>::ScriptMapIterator
-#define SCR_REG_LST(T) ScriptRegistry<T>::ScriptPointerList
+#define SCR_REG_MAP(T) ScriptRegistry<T>::ScriptStoreType
+#define SCR_REG_ITR(T) ScriptRegistry<T>::ScriptStoreIteratorType
+#define SCR_REG_LST(T) ScriptRegistry<T>::Instance()->GetScripts()
 
 // Utility macros for looping over scripts.
 #define FOR_SCRIPTS(T, C, E) \

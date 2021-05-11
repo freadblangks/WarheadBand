@@ -37,11 +37,9 @@
 
 namespace lfg
 {
-
     LFGMgr::LFGMgr(): m_lfgProposalId(1), m_options(sWorld->getIntConfig(CONFIG_LFG_OPTIONSMASK))
     {
-        new LFGPlayerScript();
-        new LFGGroupScript();
+        
 
         for (uint8 team = 0; team < 2; ++team)
         {

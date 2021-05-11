@@ -78,6 +78,7 @@ public:
     bool ParseCommands(const char* text);
 
     static std::vector<ChatCommand> const& getCommandTable();
+    static void InvalidateCommandTable();
 
     bool isValidChatMessage(const char* msg);
     void SendGlobalSysMessage(const char* str);
@@ -125,8 +126,6 @@ public:
     Creature* GetCreatureFromPlayerMapByDbGuid(ObjectGuid::LowType lowguid);
     bool HasSentErrorMessage() const { return sentErrorMessage; }
     void SetSentErrorMessage(bool val) { sentErrorMessage = val; }
-    static bool LoadCommandTable() { return load_command_table; }
-    static void SetLoadCommandTable(bool val) { load_command_table = val; }
 
     bool ShowHelpForCommand(std::vector<ChatCommand> const& table, const char* cmd);
 protected:
@@ -139,7 +138,6 @@ private:
     WorldSession* m_session;                           // != nullptr for chat command call and nullptr for CLI command
 
     // common global flag
-    static bool load_command_table;
     bool sentErrorMessage;
 };
 

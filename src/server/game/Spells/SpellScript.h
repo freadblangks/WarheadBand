@@ -20,6 +20,7 @@
 
 #include "SharedDefines.h"
 #include "Spell.h"
+#include "ScriptReloadMgr.h"
 #include "SpellAuraDefines.h"
 #include "Util.h"
 #include <stack>
@@ -135,6 +136,11 @@ public:
 
 private:
     static bool _ValidateSpellInfo(uint32 const* begin, uint32 const* end);
+
+#ifdef WARHEAD_API_USE_DYNAMIC_LINKING
+    // Strong reference to keep the binary code loaded
+    std::shared_ptr<ModuleReference> m_moduleReference;
+#endif // WARHEAD_API_USE_DYNAMIC_LINKING
 };
 
 // SpellScript interface - enum used for runtime checks of script function calls

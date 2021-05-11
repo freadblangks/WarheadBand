@@ -5224,12 +5224,12 @@ void ObjectMgr::LoadSpellScriptNames()
             }
             while (spellInfo)
             {
-                _spellScriptsStore.insert(SpellScriptsContainer::value_type(spellInfo->Id, GetScriptId(scriptName)));
+                _spellScriptsStore.emplace(spellInfo->Id, std::make_pair(GetScriptId(scriptName), true));
                 spellInfo = spellInfo->GetNextRankSpell();
             }
         }
         else
-            _spellScriptsStore.insert(SpellScriptsContainer::value_type(spellInfo->Id, GetScriptId(scriptName)));
+            _spellScriptsStore.emplace(spellInfo->Id, std::make_pair(GetScriptId(scriptName), true));
         ++count;
     } while (result->NextRow());
 
@@ -5250,45 +5250,59 @@ void ObjectMgr::ValidateSpellScripts()
 
     uint32 count = 0;
 
-    for (SpellScriptsContainer::iterator itr = _spellScriptsStore.begin(); itr != _spellScriptsStore.end();)
+    for (auto const& spell : _spellScriptsStore)
     {
-        SpellInfo const* spellEntry = sSpellMgr->GetSpellInfo(itr->first);
-        std::vector<std::pair<SpellScriptLoader*, SpellScriptsContainer::iterator> > SpellScriptLoaders;
-        sScriptMgr->CreateSpellScriptLoaders(itr->first, SpellScriptLoaders);
-        itr = _spellScriptsStore.upper_bound(itr->first);
+        SpellInfo const* spellEntry = sSpellMgr->GetSpellInfo(spell.first);
 
-        for (std::vector<std::pair<SpellScriptLoader*, SpellScriptsContainer::iterator> >::iterator sitr = SpellScriptLoaders.begin(); sitr != SpellScriptLoaders.end(); ++sitr)
+        auto const bounds = sObjectMgr->GetSpellScriptsBounds(spell.first);
+
+        for (auto itr = bounds.first; itr != bounds.second; ++itr)
         {
-            SpellScript* spellScript = sitr->first->GetSpellScript();
-            AuraScript* auraScript = sitr->first->GetAuraScript();
-            bool valid = true;
-            if (!spellScript && !auraScript)
+            if (SpellScriptLoader* spellScriptLoader = sScriptMgr->GetSpellScriptLoader(itr->second.first))
             {
-                LOG_ERROR("spells", "TSCR: Functions GetSpellScript() and GetAuraScript() of script `%s` do not return objects - script skipped",  GetScriptName(sitr->second->second).c_str());
-                valid = false;
+                ++count;
+
+                std::unique_ptr<SpellScript> spellScript(spellScriptLoader->GetSpellScript());
+                std::unique_ptr<AuraScript> auraScript(spellScriptLoader->GetAuraScript());
+
+                if (!spellScript && !auraScript)
+                {
+                    LOG_ERROR("scripts", "Functions GetSpellScript() and GetAuraScript() of script `%s` do not return objects - script skipped", GetScriptName(itr->second.first).c_str());
+
+                    itr->second.second = false;
+                    continue;
+                }
+
+                if (spellScript)
+                {
+                    spellScript->_Init(&spellScriptLoader->GetName(), spellEntry->Id);
+                    spellScript->_Register();
+
+                    if (!spellScript->_Validate(spellEntry))
+                    {
+                        itr->second.second = false;
+                        continue;
+                    }
+                }
+
+                if (auraScript)
+                {
+                    auraScript->_Init(&spellScriptLoader->GetName(), spellEntry->Id);
+                    auraScript->_Register();
+
+                    if (!auraScript->_Validate(spellEntry))
+                    {
+                        itr->second.second = false;
+                        continue;
+                    }
+                }
+
+                // Enable the script when all checks passed
+                itr->second.second = true;
             }
-            if (spellScript)
-            {
-                spellScript->_Init(&sitr->first->GetName(), spellEntry->Id);
-                spellScript->_Register();
-                if (!spellScript->_Validate(spellEntry))
-                    valid = false;
-                delete spellScript;
-            }
-            if (auraScript)
-            {
-                auraScript->_Init(&sitr->first->GetName(), spellEntry->Id);
-                auraScript->_Register();
-                if (!auraScript->_Validate(spellEntry))
-                    valid = false;
-                delete auraScript;
-            }
-            if (!valid)
-            {
-                _spellScriptsStore.erase(sitr->second);
-            }
+            else
+                itr->second.second = false;
         }
-        ++count;
     }
 
     LOG_INFO("server", ">> Validated %u scripts in %u ms", count, GetMSTimeDiffToNow(oldMSTime));
@@ -8642,7 +8656,10 @@ void ObjectMgr::LoadScriptNames()
 {
     uint32 oldMSTime = getMSTime();
 
-    _scriptNamesStore.push_back("");
+    // We insert an empty placeholder here so we can use the
+    // script id 0 as dummy for "no script found".
+    _scriptNamesStore.emplace_back("");
+
     QueryResult result = WorldDatabase.Query(
                              "SELECT DISTINCT(ScriptName) FROM achievement_criteria_data WHERE ScriptName <> '' AND type = 11 "
                              "UNION "
@@ -8688,10 +8705,15 @@ void ObjectMgr::LoadScriptNames()
     LOG_INFO("server", " ");
 }
 
+ObjectMgr::ScriptNameContainer const& ObjectMgr::GetAllScriptNames() const
+{
+    return _scriptNamesStore;
+}
+
 std::string const& ObjectMgr::GetScriptName(uint32 id) const
 {
     static std::string const empty = "";
-    return id < _scriptNamesStore.size() ? _scriptNamesStore[id] : empty;
+    return (id < _scriptNamesStore.size()) ? _scriptNamesStore[id] : empty;
 }
 
 uint32 ObjectMgr::GetScriptId(std::string const& name)

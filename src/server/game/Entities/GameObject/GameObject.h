@@ -962,8 +962,10 @@ public:
 
     static std::unordered_map<int, goEventFlag> gameObjectToEventFlag; // Gameobject -> event flag
 
-protected:
+    void AIM_Destroy();
     bool AIM_Initialize();
+
+protected:
     GameObjectModel* CreateModel();
     void UpdateModel();                                 // updates model in case displayId were changed
     uint32      m_spellId;
