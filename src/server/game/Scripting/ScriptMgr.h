@@ -54,6 +54,7 @@ class InstanceMap;
 class InstanceScript;
 class Item;
 class Map;
+class ModuleReference;
 class OutdoorPvP;
 class Player;
 class Quest;
@@ -100,18 +101,14 @@ class WH_GAME_API ScriptObject
 public:
     // Do not override this in scripts; it should be overridden by the various script type classes. It indicates
     // whether or not this script type must be assigned in the database.
-    [[nodiscard]] virtual bool isAfterLoadScript() const { return false; }
+    [[nodiscard]] virtual bool IsAfterLoadDB() const { return false; }
     virtual void checkValidity() { }
 
     [[nodiscard]] const std::string& GetName() const { return _name; }
 
 protected:
-    ScriptObject(const char* name)
-        : _name(std::string(name))
-    {
-    }
-
-    virtual ~ScriptObject() = default;
+    ScriptObject(const char* name);
+    virtual ~ScriptObject();
 
 private:
     const std::string _name;
@@ -289,7 +286,7 @@ protected:
     WorldMapScript(const char* name, uint32 mapId);
 
 public:
-    [[nodiscard]] bool isAfterLoadScript() const override { return true; }
+    [[nodiscard]] bool IsAfterLoadDB() const override { return true; }
 
     void checkValidity() override
     {
@@ -324,7 +321,7 @@ protected:
     BattlegroundMapScript(const char* name, uint32 mapId);
 
 public:
-    [[nodiscard]] bool isAfterLoadScript() const override { return true; }
+    [[nodiscard]] bool IsAfterLoadDB() const override { return true; }
 
     void checkValidity() override
     {
@@ -1376,16 +1373,15 @@ private:
     ScriptMgr();
     virtual ~ScriptMgr();
 
+    void IncreaseScriptCount() { ++_scriptCount; }
+    void DecreaseScriptCount() { --_scriptCount; }
+
 public: /* Initialization */
     static ScriptMgr* instance();
     void Initialize();
     void LoadDatabase();
     void FillSpellSummary();
-    void CheckIfScriptsInDatabaseExist();
 
-    const char* ScriptsVersion() const { return "Integrated Trinity Scripts"; }
-
-    void IncrementScriptCount() { ++_scriptCount; }
     uint32 GetScriptCount() const { return _scriptCount; }
 
     typedef void(*ScriptLoaderCallbackType)();
@@ -1397,13 +1393,40 @@ public: /* Initialization */
         _script_loader_callback = script_loader_callback;
     }
 
+public: /* Script contexts */
+    /// Set the current script context, which allows the ScriptMgr
+    /// to accept new scripts in this context.
+    /// Requires a SwapScriptContext() call afterwards to load the new scripts.
+    void SetScriptContext(std::string const& context);
+
+    /// Returns the current script context.
+    std::string const& GetCurrentScriptContext() const { return _currentContext; }
+
+    /// Releases all scripts associated with the given script context immediately.
+    /// Requires a SwapScriptContext() call afterwards to finish the unloading.
+    void ReleaseScriptContext(std::string const& context);
+
+    /// Executes all changed introduced by SetScriptContext and ReleaseScriptContext.
+    /// It is possible to combine multiple SetScriptContext and ReleaseScriptContext
+    /// calls for better performance (bulk changes).
+    void SwapScriptContext(bool initialize = false);
+
+    /// Returns the context name of the static context provided by the worldserver
+    static std::string const& GetNameOfStaticContext();
+
+    /// Acquires a strong module reference to the module containing the given script name,
+    /// which prevents the shared library which contains the script from unloading.
+    /// The shared library is lazy unloaded as soon as all references to it are released.
+    std::shared_ptr<ModuleReference> AcquireModuleReferenceOfScriptName(
+        [[maybe_unused]] std::string const& scriptname) const;
+
 public: /* Unloading */
     void Unload();
 
 public: /* SpellScriptLoader */
-    void CreateSpellScripts(uint32 spellId, std::list<SpellScript*>& scriptVector);
-    void CreateAuraScripts(uint32 spellId, std::list<AuraScript*>& scriptVector);
-    void CreateSpellScriptLoaders(uint32 spellId, std::vector<std::pair<SpellScriptLoader*, std::multimap<uint32, uint32>::iterator> >& scriptVector);
+    void CreateSpellScripts(uint32 spellId, std::vector<SpellScript*>& scriptVector, Spell* invoker) const;
+    void CreateAuraScripts(uint32 spellId, std::vector<AuraScript*>& scriptVector, Aura* invoker) const;
+    SpellScriptLoader* GetSpellScriptLoader(uint32 scriptId);
 
 public: /* ServerScript */
     void OnNetworkStart();
@@ -1792,54 +1815,56 @@ public: /* MailScript */
 
 public: /* AchievementScript */
 
-        void SetRealmCompleted(AchievementEntry const* achievement);
-        bool IsCompletedCriteria(AchievementMgr* mgr, AchievementCriteriaEntry const* achievementCriteria, AchievementEntry const* achievement, CriteriaProgress const* progress);
-        bool IsRealmCompleted(AchievementGlobalMgr const* globalmgr, AchievementEntry const* achievement, std::chrono::system_clock::time_point completionTime);
-        void OnBeforeCheckCriteria(AchievementMgr* mgr, AchievementCriteriaEntryList const* achievementCriteriaList);
-        bool CanCheckCriteria(AchievementMgr* mgr, AchievementCriteriaEntry const* achievementCriteria);
+    void SetRealmCompleted(AchievementEntry const* achievement);
+    bool IsCompletedCriteria(AchievementMgr* mgr, AchievementCriteriaEntry const* achievementCriteria, AchievementEntry const* achievement, CriteriaProgress const* progress);
+    bool IsRealmCompleted(AchievementGlobalMgr const* globalmgr, AchievementEntry const* achievement, std::chrono::system_clock::time_point completionTime);
+    void OnBeforeCheckCriteria(AchievementMgr* mgr, AchievementCriteriaEntryList const* achievementCriteriaList);
+    bool CanCheckCriteria(AchievementMgr* mgr, AchievementCriteriaEntry const* achievementCriteria);
 
-    public: /* PetScript */
+public: /* PetScript */
 
-        void OnInitStatsForLevel(Guardian* guardian, uint8 petlevel);
-        void OnCalculateMaxTalentPointsForLevel(Pet* pet, uint8 level, uint8& points);
-        bool CanUnlearnSpellSet(Pet* pet, uint32 level, uint32 spell);
-        bool CanUnlearnSpellDefault(Pet* pet, SpellInfo const* spellEntry);
-        bool CanResetTalents(Pet* pet);
+    void OnInitStatsForLevel(Guardian* guardian, uint8 petlevel);
+    void OnCalculateMaxTalentPointsForLevel(Pet* pet, uint8 level, uint8& points);
+    bool CanUnlearnSpellSet(Pet* pet, uint32 level, uint32 spell);
+    bool CanUnlearnSpellDefault(Pet* pet, SpellInfo const* spellEntry);
+    bool CanResetTalents(Pet* pet);
 
-    public: /* ArenaScript */
+public: /* ArenaScript */
 
-        bool CanAddMember(ArenaTeam* team, ObjectGuid PlayerGuid);
-        void OnGetPoints(ArenaTeam* team, uint32 memberRating, float& points);
-        bool CanSaveToDB(ArenaTeam* team);
+    bool CanAddMember(ArenaTeam* team, ObjectGuid PlayerGuid);
+    void OnGetPoints(ArenaTeam* team, uint32 memberRating, float& points);
+    bool CanSaveToDB(ArenaTeam* team);
 
-    public: /* MiscScript */
+public: /* MiscScript */
 
-        void OnConstructObject(Object* origin);
-        void OnDestructObject(Object* origin);
-        void OnConstructPlayer(Player* origin);
-        void OnDestructPlayer(Player* origin);
-        void OnConstructGroup(Group* origin);
-        void OnDestructGroup(Group* origin);
-        void OnConstructInstanceSave(InstanceSave* origin);
-        void OnDestructInstanceSave(InstanceSave* origin);
-        void OnItemCreate(Item* item, ItemTemplate const* itemProto, Player const* owner);
-        bool CanApplySoulboundFlag(Item* item, ItemTemplate const* proto);
-        bool CanItemApplyEquipSpell(Player* player, Item* item);
-        bool CanSendAuctionHello(WorldSession const* session, ObjectGuid guid, Creature* creature);
-        void ValidateSpellAtCastSpell(Player* player, uint32& oldSpellId, uint32& spellId, uint8& castCount, uint8& castFlags);
-        void OnPlayerSetPhase(const AuraEffect* auraEff, AuraApplication const* aurApp, uint8 mode, bool apply, uint32& newPhase);
-        void ValidateSpellAtCastSpellResult(Player* player, Unit* mover, Spell* spell, uint32 oldSpellId, uint32 spellId);
-        void OnAfterLootTemplateProcess(Loot* loot, LootTemplate const* tab, LootStore const& store, Player* lootOwner, bool personal, bool noEmptyError, uint16 lootMode);
-        void OnInstanceSave(InstanceSave* instanceSave);
+    void OnConstructObject(Object* origin);
+    void OnDestructObject(Object* origin);
+    void OnConstructPlayer(Player* origin);
+    void OnDestructPlayer(Player* origin);
+    void OnConstructGroup(Group* origin);
+    void OnDestructGroup(Group* origin);
+    void OnConstructInstanceSave(InstanceSave* origin);
+    void OnDestructInstanceSave(InstanceSave* origin);
+    void OnItemCreate(Item* item, ItemTemplate const* itemProto, Player const* owner);
+    bool CanApplySoulboundFlag(Item* item, ItemTemplate const* proto);
+    bool CanItemApplyEquipSpell(Player* player, Item* item);
+    bool CanSendAuctionHello(WorldSession const* session, ObjectGuid guid, Creature* creature);
+    void ValidateSpellAtCastSpell(Player* player, uint32& oldSpellId, uint32& spellId, uint8& castCount, uint8& castFlags);
+    void OnPlayerSetPhase(const AuraEffect* auraEff, AuraApplication const* aurApp, uint8 mode, bool apply, uint32& newPhase);
+    void ValidateSpellAtCastSpellResult(Player* player, Unit* mover, Spell* spell, uint32 oldSpellId, uint32 spellId);
+    void OnAfterLootTemplateProcess(Loot* loot, LootTemplate const* tab, LootStore const& store, Player* lootOwner, bool personal, bool noEmptyError, uint16 lootMode);
+    void OnInstanceSave(InstanceSave* instanceSave);
 
-    public: /* CommandSC */
+public: /* CommandSC */
 
-        void OnHandleDevCommand(Player* player, std::string& argstr);
+    void OnHandleDevCommand(Player* player, std::string& argstr);
 
 private:
     uint32 _scriptCount;
 
     ScriptLoaderCallbackType _script_loader_callback;
+
+    std::string _currentContext;
 };
 
 #define sScriptMgr ScriptMgr::instance()

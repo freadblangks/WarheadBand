@@ -46,6 +46,7 @@
 #include "Resolver.h"
 #include "ScriptLoader.h"
 #include "ScriptMgr.h"
+#include "ScriptReloadMgr.h"
 #include "SecretMgr.h"
 #include "SharedDefines.h"
 #include "World.h"
@@ -284,7 +285,7 @@ int main(int argc, char** argv)
     std::shared_ptr<void> sScriptMgrHandle(nullptr, [](void*)
     {
         sScriptMgr->Unload();
-        //sScriptReloadMgr->Unload();
+        sScriptReloadMgr->Unload();
     });
 
     ///- Initialize the World
