@@ -100,8 +100,7 @@ class WH_GAME_API ScriptObject
 public:
     // Do not override this in scripts; it should be overridden by the various script type classes. It indicates
     // whether or not this script type must be assigned in the database.
-    [[nodiscard]] virtual bool IsDatabaseBound() const { return false; }
-    [[nodiscard]] virtual bool isAfterLoadScript() const { return IsDatabaseBound(); }
+    [[nodiscard]] virtual bool isAfterLoadScript() const { return false; }
     virtual void checkValidity() { }
 
     [[nodiscard]] const std::string& GetName() const { return _name; }
@@ -133,8 +132,6 @@ protected:
     SpellScriptLoader(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     // Should return a fully valid SpellScript pointer.
     [[nodiscard]] virtual SpellScript* GetSpellScript() const { return nullptr; }
 
@@ -309,8 +306,6 @@ protected:
     InstanceMapScript(const char* name, uint32 mapId);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     void checkValidity() override
     {
         checkMap();
@@ -346,8 +341,6 @@ protected:
     ItemScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     // Called when a player accepts a quest from the item.
     [[nodiscard]] virtual bool OnQuestAccept(Player* /*player*/, Item* /*item*/, Quest const* /*quest*/) { return false; }
 
@@ -457,8 +450,6 @@ protected:
     CreatureScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     // Called when a player opens a gossip dialog with the creature.
     [[nodiscard]] virtual bool OnGossipHello(Player* /*player*/, Creature* /*creature*/) { return false; }
 
@@ -493,8 +484,6 @@ protected:
     GameObjectScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     // Called when a player opens a gossip dialog with the gameobject.
     [[nodiscard]] virtual bool OnGossipHello(Player* /*player*/, GameObject* /*go*/) { return false; }
 
@@ -535,8 +524,6 @@ protected:
     AreaTriggerScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     // Called when the area trigger is activated by a player.
     [[nodiscard]] virtual bool OnTrigger(Player* /*player*/, AreaTrigger const* /*trigger*/) { return false; }
 };
@@ -547,8 +534,6 @@ protected:
     BattlegroundScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     // Should return a fully valid Battleground object for the type ID.
     [[nodiscard]] virtual Battleground* GetBattleground() const = 0;
 };
@@ -559,8 +544,6 @@ protected:
     OutdoorPvPScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     // Should return a fully valid OutdoorPvP object for the type ID.
     [[nodiscard]] virtual OutdoorPvP* GetOutdoorPvP() const = 0;
 };
@@ -581,8 +564,6 @@ protected:
     WeatherScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     // Called when the weather changes in the zone this script is associated with.
     virtual void OnChange(Weather* /*weather*/, WeatherState /*state*/, float /*grade*/) { }
 };
@@ -633,8 +614,6 @@ protected:
     ConditionScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     // Called when a single condition is checked for a player.
     [[nodiscard]] virtual bool OnConditionCheck(Condition* /*condition*/, ConditionSourceInfo& /*sourceInfo*/) { return true; }
 };
@@ -676,8 +655,6 @@ protected:
     TransportScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     // Called when a player boards the transport.
     virtual void OnAddPassenger(Transport* /*transport*/, Player* /*player*/) { }
 
@@ -697,8 +674,6 @@ protected:
     AchievementCriteriaScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return true; }
-
     // deprecated/legacy
     [[nodiscard]] virtual bool OnCheck(Player* /*source*/, Unit* /*target*/) { return true; };
 };
@@ -1072,8 +1047,6 @@ protected:
     GuildScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return false; }
-
     // Called when a member is added to the guild.
     virtual void OnAddMember(Guild* /*guild*/, Player* /*player*/, uint8& /*plRank*/) { }
 
@@ -1115,8 +1088,6 @@ protected:
     GroupScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return false; }
-
     // Called when a member is added to a group.
     virtual void OnAddMember(Group* /*group*/, ObjectGuid /*guid*/) { }
 
@@ -1172,8 +1143,6 @@ protected:
     BGScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return false; }
-
     // Start Battlegroud
     virtual void OnBattlegroundStart(Battleground* /*bg*/) { }
 
@@ -1214,8 +1183,6 @@ protected:
     ArenaTeamScript(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return false; };
-
     virtual void OnGetSlotByType(const uint32 /*type*/, uint8& /*slot*/) {}
     virtual void OnGetArenaPoints(ArenaTeam* /*team*/, float& /*points*/) {}
     virtual void OnTypeIDToQueueID(const BattlegroundTypeId /*bgTypeId*/, const uint8 /*arenaType*/, uint32& /*queueTypeID*/) {}
@@ -1229,8 +1196,6 @@ protected:
     SpellSC(const char* name);
 
 public:
-    [[nodiscard]] bool IsDatabaseBound() const override { return false; }
-
     // Calculate max duration in applying aura
     virtual void OnCalcMaxDuration(Aura const* /*aura*/, int32& /*maxDuration*/) { }
 
@@ -1878,147 +1843,5 @@ private:
 };
 
 #define sScriptMgr ScriptMgr::instance()
-
-template<class TScript>
-class ScriptRegistry
-{
-public:
-    typedef std::map<uint32, TScript*> ScriptMap;
-    typedef typename ScriptMap::iterator ScriptMapIterator;
-
-    typedef std::vector<TScript*> ScriptVector;
-    typedef typename ScriptVector::iterator ScriptVectorIterator;
-
-    // The actual list of scripts. This will be accessed concurrently, so it must not be modified
-    // after server startup.
-    static ScriptMap ScriptPointerList;
-    // After database load scripts
-    static ScriptVector ALScripts;
-
-    static void AddScript(TScript* const script)
-    {
-        ASSERT(script);
-
-        if (!_checkMemory(script))
-            return;
-
-        if (script->isAfterLoadScript())
-        {
-            ALScripts.push_back(script);
-        }
-        else
-        {
-            script->checkValidity();
-
-            // We're dealing with a code-only script; just add it.
-            ScriptPointerList[_scriptIdCounter++] = script;
-            sScriptMgr->IncrementScriptCount();
-        }
-    }
-
-    static void AddALScripts()
-    {
-        for(ScriptVectorIterator it = ALScripts.begin(); it != ALScripts.end(); ++it)
-        {
-            TScript* const script = *it;
-
-            script->checkValidity();
-
-            if (script->IsDatabaseBound())
-            {
-                if (!_checkMemory(script))
-                {
-                    return;
-                }
-
-                // Get an ID for the script. An ID only exists if it's a script that is assigned in the database
-                // through a script name (or similar).
-                uint32 id = sObjectMgr->GetScriptId(script->GetName().c_str());
-                if (id)
-                {
-                    // Try to find an existing script.
-                    bool existing = false;
-                    for (ScriptMapIterator it = ScriptPointerList.begin(); it != ScriptPointerList.end(); ++it)
-                    {
-                        // If the script names match...
-                        if (it->second->GetName() == script->GetName())
-                        {
-                            // ... It exists.
-                            existing = true;
-                            break;
-                        }
-                    }
-
-                    // If the script isn't assigned -> assign it!
-                    if (!existing)
-                    {
-                        ScriptPointerList[id] = script;
-                        sScriptMgr->IncrementScriptCount();
-                    }
-                    else
-                    {
-                        // If the script is already assigned -> delete it!
-                        LOG_ERROR("server", "Script named '%s' is already assigned (two or more scripts have the same name), so the script can't work, aborting...",
-                                       script->GetName().c_str());
-
-                        ABORT(); // Error that should be fixed ASAP.
-                    }
-                }
-                else
-                {
-                    // The script uses a script name from database, but isn't assigned to anything.
-                    if (script->GetName().find("Smart") == std::string::npos)
-                        LOG_ERROR("sql.sql", "Script named '%s' is not assigned in the database.",
-                                         script->GetName().c_str());
-                }
-            }
-            else
-            {
-                // We're dealing with a code-only script; just add it.
-                ScriptPointerList[_scriptIdCounter++] = script;
-                sScriptMgr->IncrementScriptCount();
-            }
-        }
-    }
-
-    // Gets a script by its ID (assigned by ObjectMgr).
-    static TScript* GetScriptById(uint32 id)
-    {
-        ScriptMapIterator it = ScriptPointerList.find(id);
-        if (it != ScriptPointerList.end())
-            return it->second;
-
-        return nullptr;
-    }
-
-private:
-    // See if the script is using the same memory as another script. If this happens, it means that
-    // someone forgot to allocate new memory for a script.
-    static bool _checkMemory(TScript* const script)
-    {
-        // See if the script is using the same memory as another script. If this happens, it means that
-        // someone forgot to allocate new memory for a script.
-        for (ScriptMapIterator it = ScriptPointerList.begin(); it != ScriptPointerList.end(); ++it)
-        {
-            if (it->second == script)
-            {
-                LOG_ERROR("server", "Script '%s' has same memory pointer as '%s'.",
-                               script->GetName().c_str(), it->second->GetName().c_str());
-
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    // Counter used for code-only scripts.
-    static uint32 _scriptIdCounter;
-};
-
-// Instantiate static members of ScriptRegistry.
-template<class TScript> std::map<uint32, TScript*> ScriptRegistry<TScript>::ScriptPointerList;
-template<class TScript> std::vector<TScript*> ScriptRegistry<TScript>::ALScripts;
-template<class TScript> uint32 ScriptRegistry<TScript>::_scriptIdCounter = 0;
 
 #endif
