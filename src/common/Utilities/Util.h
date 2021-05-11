@@ -359,33 +359,35 @@ inline bool ValueContainsStringI(std::pair<T, std::string> const& haystack, std:
 
 // simple class for not-modifyable list
 template <typename T>
-class HookList
+class HookList final
 {
-    typedef typename std::list<T>::iterator ListIterator;
 private:
-    typename std::list<T> m_list;
+    typedef std::vector<T> ContainerType;
+
+    ContainerType _container;
+
 public:
-    HookList<T>& operator+=(T t)
+    typedef typename ContainerType::iterator iterator;
+
+    HookList<T>& operator+=(T&& t)
     {
-        m_list.push_back(t);
+        _container.push_back(std::move(t));
         return *this;
     }
-    HookList<T>& operator-=(T t)
+
+    size_t size() const
     {
-        m_list.remove(t);
-        return *this;
+        return _container.size();
     }
-    size_t size()
+
+    iterator begin()
     {
-        return m_list.size();
+        return _container.begin();
     }
-    ListIterator begin()
+
+    iterator end()
     {
-        return m_list.begin();
-    }
-    ListIterator end()
-    {
-        return m_list.end();
+        return _container.end();
     }
 };
 
