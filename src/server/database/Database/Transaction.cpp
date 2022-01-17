@@ -16,6 +16,7 @@
  */
 
 #include "Transaction.h"
+#include "Errors.h"
 #include "Log.h"
 #include "MySQLConnection.h"
 #include "PreparedStatement.h"
@@ -33,7 +34,7 @@ void TransactionBase::Append(std::string_view sql)
 {
     SQLElementData data = {};
     data.type = SQL_ELEMENT_RAW;
-    data.element.query = sql;
+    data.element = std::string(sql);
     m_queries.emplace_back(data);
 }
 
@@ -42,7 +43,7 @@ void TransactionBase::AppendPreparedStatement(PreparedStatementBase* stmt)
 {
     SQLElementData data = {};
     data.type = SQL_ELEMENT_PREPARED;
-    data.element.stmt = stmt;
+    data.element = stmt;
     m_queries.emplace_back(data);
 }
 
@@ -57,10 +58,33 @@ void TransactionBase::Cleanup()
         switch (data.type)
         {
             case SQL_ELEMENT_PREPARED:
-                delete data.element.stmt;
+            {
+                try
+                {
+                    PreparedStatementBase* stmt = std::get<PreparedStatementBase*>(data.element);
+                    ASSERT(stmt);
+
+                    delete stmt;
+                }
+                catch (const std::bad_variant_access& ex)
+                {
+                    LOG_FATAL("sql.sql", "> PreparedStatementBase not found in SQLElementData. {}", ex.what());
+                    ABORT();
+                }
+            }
             break;
             case SQL_ELEMENT_RAW:
-                data.element.query = {};
+            {
+                try
+                {
+                    std::get<std::string>(data.element).clear();
+                }
+                catch (const std::bad_variant_access& ex)
+                {
+                    LOG_FATAL("sql.sql", "> std::string not found in SQLElementData. {}", ex.what());
+                    ABORT();
+                }
+            }
             break;
         }
     }

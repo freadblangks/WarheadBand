@@ -21,6 +21,7 @@
 #include "Battleground.h"
 #include "CalendarMgr.h"
 #include "CharacterCache.h"
+#include "CharacterPackets.h"
 #include "Chat.h"
 #include "Common.h"
 #include "DatabaseEnv.h"
@@ -227,7 +228,7 @@ void WorldSession::HandleCharEnum(PreparedQueryResult result)
     {
         do
         {
-            ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>((*result)[0].GetUInt32());
+            ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>((*result)[0].Get<uint32>());
             LOG_DEBUG("network.opcode", "Loading char {} from account {}.", guid.ToString(), GetAccountId());
             if (Player::BuildEnumData(result, &data))
             {
@@ -395,7 +396,7 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
         if (result)
         {
             Field* fields = result->Fetch();
-            acctCharCount = uint64(fields[0].GetDouble());
+            acctCharCount = fields[0].Get<uint64>();
         }
 
         if (acctCharCount >= static_cast<uint64>(CONF_GET_INT("CharactersPerAccount")))
@@ -413,7 +414,7 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
         if (result)
         {
             Field* fields = result->Fetch();
-            createInfo->CharCount = uint8(fields[0].GetUInt64()); // SQL's COUNT() returns uint64 but it will always be less than uint8.Max
+            createInfo->CharCount = uint8(fields[0].Get<uint64>()); // SQL's COUNT() returns uint64 but it will always be less than uint8.Max
 
             if (createInfo->CharCount >= CONF_GET_INT("CharactersPerRealm"))
             {
@@ -440,11 +441,11 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
                 uint32 freeDeathKnightSlots = CONF_GET_INT("HeroicCharactersPerRealm");
 
                 Field* field = result->Fetch();
-                uint8 accRace = field[1].GetUInt8();
+                uint8 accRace = field[1].Get<uint8>();
 
                 if (checkDeathKnightReqs)
                 {
-                    uint8 accClass = field[2].GetUInt8();
+                    uint8 accClass = field[2].Get<uint8>();
                     if (accClass == CLASS_DEATH_KNIGHT)
                     {
                         if (freeDeathKnightSlots > 0)
@@ -459,7 +460,7 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
 
                     if (!hasHeroicReqLevel)
                     {
-                        uint8 accLevel = field[0].GetUInt8();
+                        uint8 accLevel = field[0].Get<uint8>();
                         if (accLevel >= heroicReqLevel)
                             hasHeroicReqLevel = true;
                     }
@@ -488,14 +489,14 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
                         break;
 
                     field = result->Fetch();
-                    accRace = field[1].GetUInt8();
+                    accRace = field[1].Get<uint8>();
 
                     if (!haveSameRace)
                         haveSameRace = createInfo->Race == accRace;
 
                     if (checkDeathKnightReqs)
                     {
-                        uint8 acc_class = field[2].GetUInt8();
+                        uint8 acc_class = field[2].Get<uint8>();
                         if (acc_class == CLASS_DEATH_KNIGHT)
                         {
                             if (freeDeathKnightSlots > 0)
@@ -510,7 +511,7 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
 
                         if (!hasHeroicReqLevel)
                         {
-                            uint8 acc_level = field[0].GetUInt8();
+                            uint8 acc_level = field[0].Get<uint8>();
                             if (acc_level >= heroicReqLevel)
                                 hasHeroicReqLevel = true;
                         }
@@ -1194,9 +1195,9 @@ void WorldSession::HandlePlayerLoginToCharInWorld(Player* pCurrChar)
 
                 _mask[i] = uint32(1) << (eff - (32 * i));
                 int32 val = 0;
-                for (SpellModList::const_iterator itr = spellMods.begin(); itr != spellMods.end(); ++itr)
-                    if ((*itr)->type == modType && (*itr)->mask & _mask)
-                        val += (*itr)->value;
+                for (auto const& spellMod : spellMods)
+                    if (spellMod->type == modType && spellMod->mask & _mask)
+                        val += spellMod->value;
 
                 if (val == 0)
                     continue;
@@ -1310,18 +1311,20 @@ void WorldSession::HandleSetFactionInactiveOpcode(WorldPacket& recvData)
     _player->GetReputationMgr().SetInactive(replistid, inactive);
 }
 
-void WorldSession::HandleShowingHelmOpcode(WorldPacket& recvData)
+void WorldSession::HandleShowingHelmOpcode(WorldPackets::Character::ShowingHelm& packet)
 {
-    LOG_DEBUG("network.opcode", "CMSG_SHOWING_HELM for {}", _player->GetName());
-    recvData.read_skip<uint8>(); // unknown, bool?
-    _player->ToggleFlag(PLAYER_FLAGS, PLAYER_FLAGS_HIDE_HELM);
+    if (packet.ShowHelm)
+        _player->RemoveFlag(PLAYER_FLAGS, PLAYER_FLAGS_HIDE_HELM);
+    else
+        _player->SetFlag(PLAYER_FLAGS, PLAYER_FLAGS_HIDE_HELM);
 }
 
-void WorldSession::HandleShowingCloakOpcode(WorldPacket& recvData)
+void WorldSession::HandleShowingCloakOpcode(WorldPackets::Character::ShowingCloak& packet)
 {
-    LOG_DEBUG("network.opcode", "CMSG_SHOWING_CLOAK for {}", _player->GetName());
-    recvData.read_skip<uint8>(); // unknown, bool?
-    _player->ToggleFlag(PLAYER_FLAGS, PLAYER_FLAGS_HIDE_CLOAK);
+    if (packet.ShowCloak)
+        _player->RemoveFlag(PLAYER_FLAGS, PLAYER_FLAGS_HIDE_CLOAK);
+    else
+        _player->SetFlag(PLAYER_FLAGS, PLAYER_FLAGS_HIDE_CLOAK);
 }
 
 void WorldSession::HandleCharRenameOpcode(WorldPacket& recvData)
@@ -1374,9 +1377,9 @@ void WorldSession::HandleCharRenameCallBack(std::shared_ptr<CharacterRenameInfo>
 
     Field* fields = result->Fetch();
 
-    ObjectGuid::LowType guidLow = fields[0].GetUInt32();
-    std::string oldName = fields[1].GetString();
-    uint16 atLoginFlags = fields[2].GetUInt16();
+    ObjectGuid::LowType guidLow = fields[0].Get<uint32>();
+    std::string oldName = fields[1].Get<std::string>();
+    uint16 atLoginFlags = fields[2].Get<uint16>();
 
     if (!(atLoginFlags & AT_LOGIN_RENAME))
     {
@@ -1647,11 +1650,11 @@ void WorldSession::HandleCharCustomizeCallback(std::shared_ptr<CharacterCustomiz
     }
 
     Field* fields = result->Fetch();
-    std::string oldName = fields[0].GetString();
-    //uint8 plrRace = fields[1].GetUInt8();
-    //uint8 plrClass = fields[2].GetUInt8();
-    //uint8 plrGender = fields[3].GetUInt8();
-    uint32 atLoginFlags = fields[4].GetUInt16();
+    std::string oldName = fields[0].Get<std::string>();
+    //uint8 plrRace = fields[1].Get<uint8>();
+    //uint8 plrClass = fields[2].Get<uint8>();
+    //uint8 plrGender = fields[3].Get<uint8>();
+    uint32 atLoginFlags = fields[4].Get<uint16>();
 
     if (!(atLoginFlags & AT_LOGIN_CUSTOMIZE))
     {
@@ -1949,9 +1952,9 @@ void WorldSession::HandleCharFactionOrRaceChangeCallback(std::shared_ptr<Charact
     }
 
     Field* fields = result->Fetch();
-    uint32 atLoginFlags = fields[0].GetUInt16();
-    std::string knownTitlesStr = fields[1].GetString();
-    uint32 money = fields[2].GetUInt32();
+    uint32 atLoginFlags = fields[0].Get<uint16>();
+    std::string knownTitlesStr = fields[1].Get<std::string>();
+    uint32 money = fields[2].Get<uint32>();
 
     uint32 usedLoginFlag = (factionChangeInfo->FactionChange ? AT_LOGIN_CHANGE_FACTION : AT_LOGIN_CHANGE_RACE);
     if (!(atLoginFlags & usedLoginFlag))
@@ -2117,7 +2120,7 @@ void WorldSession::HandleCharFactionOrRaceChangeCallback(std::shared_ptr<Charact
         GetAccountId(), GetRemoteAddress(), playerData->Name, lowGuid, factionChangeInfo->Name);
 
     // xinef: update global data
-    sCharacterCache->UpdateCharacterData(factionChangeInfo->Guid, factionChangeInfo->Name);
+    sCharacterCache->UpdateCharacterData(factionChangeInfo->Guid, factionChangeInfo->Name, factionChangeInfo->Gender, factionChangeInfo->Race);
 
     if (oldRace != factionChangeInfo->Race)
     {
@@ -2367,7 +2370,7 @@ void WorldSession::HandleCharFactionOrRaceChangeCallback(std::shared_ptr<Charact
                     continue;
 
                 fields = result->Fetch();
-                int32 oldDBRep = fields[0].GetInt32();
+                int32 oldDBRep = fields[0].Get<int32>();
                 FactionEntry const* factionEntry = sFactionStore.LookupEntry(oldReputation);
 
                 // old base reputation

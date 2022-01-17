@@ -118,37 +118,37 @@ namespace
         return DatabaseFieldTypes::Null;
     }
 
-    static std::string_view FieldTypeToString(enum_field_types type)
+    static std::string FieldTypeToString(enum_field_types type)
     {
         switch (type)
         {
-            case MYSQL_TYPE_BIT:         return std::string_view{ "BIT" };
-            case MYSQL_TYPE_BLOB:        return std::string_view{ "BLOB" };
-            case MYSQL_TYPE_DATE:        return std::string_view{ "DATE" };
-            case MYSQL_TYPE_DATETIME:    return std::string_view{ "DATETIME" };
-            case MYSQL_TYPE_NEWDECIMAL:  return std::string_view{ "NEWDECIMAL" };
-            case MYSQL_TYPE_DECIMAL:     return std::string_view{ "DECIMAL" };
-            case MYSQL_TYPE_DOUBLE:      return std::string_view{ "DOUBLE" };
-            case MYSQL_TYPE_ENUM:        return std::string_view{ "ENUM" };
-            case MYSQL_TYPE_FLOAT:       return std::string_view{ "FLOAT" };
-            case MYSQL_TYPE_GEOMETRY:    return std::string_view{ "GEOMETRY" };
-            case MYSQL_TYPE_INT24:       return std::string_view{ "INT24" };
-            case MYSQL_TYPE_LONG:        return std::string_view{ "LONG" };
-            case MYSQL_TYPE_LONGLONG:    return std::string_view{ "LONGLONG" };
-            case MYSQL_TYPE_LONG_BLOB:   return std::string_view{ "LONG_BLOB" };
-            case MYSQL_TYPE_MEDIUM_BLOB: return std::string_view{ "MEDIUM_BLOB" };
-            case MYSQL_TYPE_NEWDATE:     return std::string_view{ "NEWDATE" };
-            case MYSQL_TYPE_NULL:        return std::string_view{ "NULL" };
-            case MYSQL_TYPE_SET:         return std::string_view{ "SET" };
-            case MYSQL_TYPE_SHORT:       return std::string_view{ "SHORT" };
-            case MYSQL_TYPE_STRING:      return std::string_view{ "STRING" };
-            case MYSQL_TYPE_TIME:        return std::string_view{ "TIME" };
-            case MYSQL_TYPE_TIMESTAMP:   return std::string_view{ "TIMESTAMP" };
-            case MYSQL_TYPE_TINY:        return std::string_view{ "TINY" };
-            case MYSQL_TYPE_TINY_BLOB:   return std::string_view{ "TINY_BLOB" };
-            case MYSQL_TYPE_VAR_STRING:  return std::string_view{ "VAR_STRING" };
-            case MYSQL_TYPE_YEAR:        return std::string_view{ "YEAR" };
-            default:                     return std::string_view{ "-Unknown-" };
+            case MYSQL_TYPE_BIT:         return "BIT";
+            case MYSQL_TYPE_BLOB:        return "BLOB";
+            case MYSQL_TYPE_DATE:        return "DATE";
+            case MYSQL_TYPE_DATETIME:    return "DATETIME";
+            case MYSQL_TYPE_NEWDECIMAL:  return "NEWDECIMAL";
+            case MYSQL_TYPE_DECIMAL:     return "DECIMAL";
+            case MYSQL_TYPE_DOUBLE:      return "DOUBLE";
+            case MYSQL_TYPE_ENUM:        return "ENUM";
+            case MYSQL_TYPE_FLOAT:       return "FLOAT";
+            case MYSQL_TYPE_GEOMETRY:    return "GEOMETRY";
+            case MYSQL_TYPE_INT24:       return "INT24";
+            case MYSQL_TYPE_LONG:        return "LONG";
+            case MYSQL_TYPE_LONGLONG:    return "LONGLONG";
+            case MYSQL_TYPE_LONG_BLOB:   return "LONG_BLOB";
+            case MYSQL_TYPE_MEDIUM_BLOB: return "MEDIUM_BLOB";
+            case MYSQL_TYPE_NEWDATE:     return "NEWDATE";
+            case MYSQL_TYPE_NULL:        return "NULL";
+            case MYSQL_TYPE_SET:         return "SET";
+            case MYSQL_TYPE_SHORT:       return "SHORT";
+            case MYSQL_TYPE_STRING:      return "STRING";
+            case MYSQL_TYPE_TIME:        return "TIME";
+            case MYSQL_TYPE_TIMESTAMP:   return "TIMESTAMP";
+            case MYSQL_TYPE_TINY:        return "TINY";
+            case MYSQL_TYPE_TINY_BLOB:   return "TINY_BLOB";
+            case MYSQL_TYPE_VAR_STRING:  return "VAR_STRING";
+            case MYSQL_TYPE_YEAR:        return "YEAR";
+            default:                     return "-Unknown-";
         }
     }
 
@@ -178,6 +178,71 @@ ResultSet::ResultSet(MySQLResult* result, MySQLField* fields, uint64 rowCount, u
         InitializeDatabaseFieldMetadata(&_fieldMetadata[i], &_fields[i], i);
         _currentRow[i].SetMetadata(&_fieldMetadata[i]);
     }
+}
+
+ResultSet::~ResultSet()
+{
+    CleanUp();
+}
+
+bool ResultSet::NextRow()
+{
+    MYSQL_ROW row;
+
+    if (!_result)
+        return false;
+
+    row = mysql_fetch_row(_result);
+    if (!row)
+    {
+        CleanUp();
+        return false;
+    }
+
+    unsigned long* lengths = mysql_fetch_lengths(_result);
+    if (!lengths)
+    {
+        LOG_WARN("sql.sql", "{}:mysql_fetch_lengths, cannot retrieve value lengths. Error {}.", __FUNCTION__, mysql_error(_result->handle));
+        CleanUp();
+        return false;
+    }
+
+    for (uint32 i = 0; i < _fieldCount; i++)
+        _currentRow[i].SetStructuredValue(row[i], lengths[i]);
+
+    return true;
+}
+
+std::string ResultSet::GetFieldName(uint32 index) const
+{
+    ASSERT(index < _fieldCount);
+    return _fields[index].name;
+}
+
+void ResultSet::CleanUp()
+{
+    if (_currentRow)
+    {
+        delete[] _currentRow;
+        _currentRow = nullptr;
+    }
+
+    if (_result)
+    {
+        mysql_free_result(_result);
+        _result = nullptr;
+    }
+}
+
+Field const& ResultSet::operator[](std::size_t index) const
+{
+    ASSERT(index < _fieldCount);
+    return _currentRow[index];
+}
+
+void ResultSet::AssertRows(std::size_t sizeRows)
+{
+    ASSERT(sizeRows == _fieldCount);
 }
 
 PreparedResultSet::PreparedResultSet(MySQLStmt* stmt, MySQLResult* result, uint64 rowCount, uint32 fieldCount) :
@@ -274,22 +339,22 @@ PreparedResultSet::PreparedResultSet(MySQLStmt* stmt, MySQLResult* result, uint6
                 void* buffer = m_stmt->bind[fIndex].buffer;
                 switch (m_rBind[fIndex].buffer_type)
                 {
-                    case MYSQL_TYPE_TINY_BLOB:
-                    case MYSQL_TYPE_MEDIUM_BLOB:
-                    case MYSQL_TYPE_LONG_BLOB:
-                    case MYSQL_TYPE_BLOB:
-                    case MYSQL_TYPE_STRING:
-                    case MYSQL_TYPE_VAR_STRING:
-                        // warning - the string will not be null-terminated if there is no space for it in the buffer
-                        // when mysql_stmt_fetch returned MYSQL_DATA_TRUNCATED
-                        // we cannot blindly null-terminate the data either as it may be retrieved as binary blob and not specifically a string
-                        // in this case using Field::GetCString will result in garbage
-                        // TODO: remove Field::GetCString and use std::string_view in C++17
-                        if (fetched_length < buffer_length)
-                            *((char*)buffer + fetched_length) = '\0';
-                        break;
-                    default:
-                        break;
+                case MYSQL_TYPE_TINY_BLOB:
+                case MYSQL_TYPE_MEDIUM_BLOB:
+                case MYSQL_TYPE_LONG_BLOB:
+                case MYSQL_TYPE_BLOB:
+                case MYSQL_TYPE_STRING:
+                case MYSQL_TYPE_VAR_STRING:
+                    // warning - the string will not be null-terminated if there is no space for it in the buffer
+                    // when mysql_stmt_fetch returned MYSQL_DATA_TRUNCATED
+                    // we cannot blindly null-terminate the data either as it may be retrieved as binary blob and not specifically a string
+                    // in this case using Field::GetCString will result in garbage
+                    // TODO: remove Field::GetCString and use std::string_view in C++17
+                    if (fetched_length < buffer_length)
+                        *((char*)buffer + fetched_length) = '\0';
+                    break;
+                default:
+                    break;
                 }
 
                 m_rows[uint32(m_rowPosition) * m_fieldCount + fIndex].SetByteValue((char const*)buffer, fetched_length);
@@ -312,48 +377,9 @@ PreparedResultSet::PreparedResultSet(MySQLStmt* stmt, MySQLResult* result, uint6
     mysql_stmt_free_result(m_stmt);
 }
 
-ResultSet::~ResultSet()
-{
-    CleanUp();
-}
-
 PreparedResultSet::~PreparedResultSet()
 {
     CleanUp();
-}
-
-bool ResultSet::NextRow()
-{
-    MYSQL_ROW row;
-
-    if (!_result)
-        return false;
-
-    row = mysql_fetch_row(_result);
-    if (!row)
-    {
-        CleanUp();
-        return false;
-    }
-
-    unsigned long* lengths = mysql_fetch_lengths(_result);
-    if (!lengths)
-    {
-        LOG_WARN("sql.sql", "{}:mysql_fetch_lengths, cannot retrieve value lengths. Error {}.", __FUNCTION__, mysql_error(_result->handle));
-        CleanUp();
-        return false;
-    }
-
-    for (uint32 i = 0; i < _fieldCount; i++)
-        _currentRow[i].SetStructuredValue(row[i], lengths[i]);
-
-    return true;
-}
-
-std::string ResultSet::GetFieldName(uint32 index) const
-{
-    ASSERT(index < _fieldCount);
-    return _fields[index].name;
 }
 
 bool PreparedResultSet::NextRow()
@@ -375,27 +401,6 @@ bool PreparedResultSet::_NextRow()
 
     int retval = mysql_stmt_fetch(m_stmt);
     return retval == 0 || retval == MYSQL_DATA_TRUNCATED;
-}
-
-void ResultSet::CleanUp()
-{
-    if (_currentRow)
-    {
-        delete [] _currentRow;
-        _currentRow = nullptr;
-    }
-
-    if (_result)
-    {
-        mysql_free_result(_result);
-        _result = nullptr;
-    }
-}
-
-Field const& ResultSet::operator[](std::size_t index) const
-{
-    ASSERT(index < _fieldCount);
-    return _currentRow[index];
 }
 
 Field* PreparedResultSet::Fetch() const
@@ -422,4 +427,10 @@ void PreparedResultSet::CleanUp()
         delete[] m_rBind;
         m_rBind = nullptr;
     }
+}
+
+void PreparedResultSet::AssertRows(std::size_t sizeRows)
+{
+    ASSERT(m_rowPosition < m_rowCount);
+    ASSERT(sizeRows == m_fieldCount, "> Tuple size != count fields");
 }

@@ -22,6 +22,7 @@
 #include "WorldSession.h"
 #include "AccountMgr.h"
 #include "BattlegroundMgr.h"
+#include "CharacterPackets.h"
 #include "Common.h"
 #include "DatabaseEnv.h"
 #include "GameConfig.h"
@@ -610,7 +611,7 @@ void WorldSession::LogoutPlayer(bool save)
             guild->HandleMemberLogout(this);
 
         ///- Remove pet
-        _player->RemovePet(nullptr, PET_SAVE_AS_CURRENT);
+        _player->RemovePet(nullptr, PET_SAVE_AS_CURRENT, true);
 
         // pussywizard: on logout remove auras that are removed at map change (before saving to db)
         // there are some positive auras from boss encounters that can be kept by logging out and logging in after boss is dead, and may be used on next bosses
@@ -660,7 +661,7 @@ void WorldSession::LogoutPlayer(bool save)
             Map::PlayerList const& playerList = _player->GetMap()->GetPlayers();
 
             if (_player->GetMap()->IsDungeon() || _player->GetMap()->IsRaidOrHeroicDungeon())
-                if (playerList.isEmpty())
+                if (playerList.IsEmpty())
                     _player->TeleportToEntryPoint();
         }
 
@@ -691,8 +692,7 @@ void WorldSession::LogoutPlayer(bool save)
 
         //! Send the 'logout complete' packet to the client
         //! Client will respond by sending 3x CMSG_CANCEL_TRADE, which we currently dont handle
-        WorldPacket data(SMSG_LOGOUT_COMPLETE, 0);
-        SendPacket(&data);
+        SendPacket(WorldPackets::Character::LogoutComplete().Write());
         LOG_DEBUG("network", "SESSION: Sent SMSG_LOGOUT_COMPLETE Message");
 
         //! Since each account can only have one online character at any given time, ensure all characters for active account are marked as offline
@@ -703,7 +703,7 @@ void WorldSession::LogoutPlayer(bool save)
 
     m_playerLogout = false;
     m_playerSave = false;
-    LogoutRequest(0);
+    SetLogoutStartTime(0);
 }
 
 /// Kick a player out of the World
@@ -830,7 +830,7 @@ void WorldSession::LoadAccountData(PreparedQueryResult result, uint32 mask)
     do
     {
         Field* fields = result->Fetch();
-        uint32 type = fields[0].GetUInt8();
+        uint32 type = fields[0].Get<uint8>();
         if (type >= NUM_ACCOUNT_DATA_TYPES)
         {
             LOG_ERROR("network", "Table `{}` have invalid account data type ({}), ignore.", mask == GLOBAL_CACHE_MASK ? "account_data" : "character_account_data", type);
@@ -843,8 +843,8 @@ void WorldSession::LoadAccountData(PreparedQueryResult result, uint32 mask)
             continue;
         }
 
-        m_accountData[type].Time = time_t(fields[1].GetUInt32());
-        m_accountData[type].Data = fields[2].GetString();
+        m_accountData[type].Time = time_t(fields[1].Get<uint32>());
+        m_accountData[type].Data = fields[2].Get<std::string>();
     } while (result->NextRow());
 }
 
@@ -898,7 +898,7 @@ void WorldSession::LoadTutorialsData()
     stmt->SetData(0, GetAccountId());
     if (PreparedQueryResult result = CharacterDatabase.Query(stmt))
         for (uint8 i = 0; i < MAX_ACCOUNT_TUTORIAL_VALUES; ++i)
-            m_Tutorials[i] = (*result)[i].GetUInt32();
+            m_Tutorials[i] = (*result)[i].Get<uint32>();
 
     m_TutorialsChanged = false;
 }

@@ -71,11 +71,15 @@ public:
     [[nodiscard]] bool IsCivilian() const { return GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_CIVILIAN; }
     [[nodiscard]] bool IsTrigger() const { return GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_TRIGGER; }
     [[nodiscard]] bool IsGuard() const { return GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_GUARD; }
-    [[nodiscard]] bool CanWalk() const { return GetCreatureTemplate()->InhabitType & INHABIT_GROUND; }
+    CreatureMovementData const& GetMovementTemplate() const;
+    [[nodiscard]] bool CanWalk() const { return GetMovementTemplate().IsGroundAllowed(); }
     [[nodiscard]] bool CanSwim() const override;
     [[nodiscard]] bool CanEnterWater() const override;
-    [[nodiscard]] bool CanFly()  const override;
-    [[nodiscard]] bool CanHover() const { return m_originalAnimTier & UNIT_BYTE1_FLAG_HOVER || IsHovering(); }
+    [[nodiscard]] bool CanFly()  const override { return GetMovementTemplate().IsFlightAllowed() || IsFlying(); }
+    [[nodiscard]] bool CanHover() const { return GetMovementTemplate().Ground == CreatureGroundMovementType::Hover || IsHovering(); }
+
+    MovementGeneratorType GetDefaultMovementType() const override { return m_defaultMovementType; }
+    void SetDefaultMovementType(MovementGeneratorType mgt) { m_defaultMovementType = mgt; }
 
     void SetReactState(ReactStates st) { m_reactState = st; }
     [[nodiscard]] ReactStates GetReactState() const { return m_reactState; }
@@ -160,7 +164,7 @@ public:
     [[nodiscard]] bool HasSpell(uint32 spellID) const override;
 
     void UpdateMovementFlags();
-
+    uint32 GetRandomId(uint32 id1, uint32 id2, uint32 id3);
     bool UpdateEntry(uint32 entry, const CreatureData* data = nullptr, bool changelevel = true );
     bool UpdateStats(Stats stat) override;
     bool UpdateAllStats() override;
@@ -257,9 +261,6 @@ public:
     void UpdateMoveInLineOfSightState();
     bool IsMoveInLineOfSightDisabled() { return m_moveInLineOfSightDisabled; }
     bool IsMoveInLineOfSightStrictlyDisabled() { return m_moveInLineOfSightStrictlyDisabled; }
-
-    [[nodiscard]] MovementGeneratorType GetDefaultMovementType() const { return m_defaultMovementType; }
-    void SetDefaultMovementType(MovementGeneratorType mgt) { m_defaultMovementType = mgt; }
 
     void RemoveCorpse(bool setSpawnTime = true, bool skipVisibility = false);
 
@@ -459,7 +460,6 @@ private:
 
     uint32 m_assistanceTimer;
 
-    void applyInhabitFlags();
 };
 
 class WH_GAME_API AssistDelayEvent : public BasicEvent

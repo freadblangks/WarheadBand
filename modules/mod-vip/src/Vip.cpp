@@ -34,12 +34,12 @@ namespace
 {
     constexpr auto MAX_VIP_LEVEL = 3;
 
-    using WarheadVip = std::tuple<int64/*start*/, int64/*endtime*/, uint8/*level*/>;
+    using WarheadVip = std::tuple<Seconds/*start*/, Seconds/*endtime*/, uint8/*level*/>;
     using WarheadVipRates = std::tuple<float/*XP*/, float/*Honor*/, float/*ArenaPoint*/, float/*Reputation*/>;
 
     std::unordered_map<uint32/*acc id*/, WarheadVip> store;
     std::unordered_map<uint8/*level*/, WarheadVipRates> storeRates;
-    std::unordered_map<uint64/*guid*/, uint64/*unbindtime*/> storeUnbind;
+    std::unordered_map<uint64/*guid*/, Seconds/*unbindtime*/> storeUnbind;
     std::unordered_map<uint32/*creature entry*/, uint8/*vip level*/> storeVendors;
     std::vector<uint32> vipSpellsStore;
     TaskScheduler scheduler;
@@ -64,7 +64,7 @@ namespace
         return itr->second;
     }
 
-    Optional<uint64> GetUndindTime(uint64 guid)
+    Optional<Seconds> GetUndindTime(uint64 guid)
     {
         auto const& itr = storeUnbind.find(guid);
 
@@ -96,7 +96,7 @@ namespace
 
         auto const& [startTime, endTime, level] = *vipInfo;
 
-        duration = Warhead::Time::ToTimeString<Seconds>(endTime - GameTime::GetGameTime().count(), TimeOutput::Seconds, TimeFormat::FullText);
+        duration = Warhead::Time::ToTimeString(endTime - GameTime::GetGameTime(), TimeOutput::Seconds, TimeFormat::FullText);
 
         return duration;
     }
@@ -126,7 +126,7 @@ void Vip::InitSystem(bool reload)
         {
             auto const& [startTime, endTime, level] = vipInfo;
 
-            if (GameTime::GetGameTime().count() >= endTime)
+            if (GameTime::GetGameTime() >= endTime)
                 UnSet(accountID);
         }
 
@@ -162,7 +162,7 @@ void Vip::Update(uint32 diff)
     scheduler.Update(diff);
 }
 
-bool Vip::Add(uint32 accountID, int64 endTime, uint8 level, bool force /*= false*/)
+bool Vip::Add(uint32 accountID, Seconds endTime, uint8 level, bool force /*= false*/)
 {
     auto const& vipInfo = GetVipInfo(accountID);
 
@@ -178,17 +178,17 @@ bool Vip::Add(uint32 accountID, int64 endTime, uint8 level, bool force /*= false
         }
     }
 
-    auto timeNow = GameTime::GetGameTime().count();
+    auto timeNow = GameTime::GetGameTime();
 
     store.emplace(accountID, std::make_tuple(timeNow, endTime, level));
 
     // Add DB
     LoginDatabase.PExecute("INSERT INTO `account_premium` (`AccountID`, `StartTime`, `EndTime`, `Level`, `IsActive`) VALUES ({}, FROM_UNIXTIME({}), FROM_UNIXTIME({}), {}, 1)",
-        accountID, timeNow, endTime, level);
+        accountID, timeNow.count(), endTime.count(), level);
 
     if (auto player = GetPlayerFromAccount(accountID))
     {
-        ChatHandler(player->GetSession()).PSendSysMessage("> У вас обновление премиум статуса. Уровень {}. Окончание через {}", level, Warhead::Time::ToTimeString<Seconds>(endTime - GameTime::GetGameTime().count(), TimeOutput::Seconds, TimeFormat::FullText));
+        ChatHandler(player->GetSession()).PSendSysMessage("> У вас обновление премиум статуса. Уровень {}. Окончание через {}", level, Warhead::Time::ToTimeString(endTime - GameTime::GetGameTime(), TimeOutput::Seconds, TimeFormat::FullText));
         LearnSpells(player, level);
     }
 
@@ -404,18 +404,17 @@ void Vip::UnBindInstances(Player* player)
     }
 
     auto guid = player->GetGUID().GetRawValue();
-    auto unbindInfo = GetUndindTime(guid);
-    auto confDuration = MOD_CONF_GET_UINT("VIP.Unbind.Duration");
+    auto confDuration = Seconds(MOD_CONF_GET_UINT("VIP.Unbind.Duration"));
 
-    if (unbindInfo)
+    if (auto unbindInfo = GetUndindTime(guid))
     {
-        auto duration = GameTime::GetGameTime().count() - *unbindInfo;
+        auto duration = GameTime::GetGameTime() - *unbindInfo;
 
         if (duration < confDuration)
         {
             auto diff = confDuration - duration;
 
-            handler.PSendSysMessage("> Это можно сделать через: {}", Warhead::Time::ToTimeString<Seconds>(diff));
+            handler.PSendSysMessage("> Это можно сделать через: {}", Warhead::Time::ToTimeString(diff));
             return;
         }
     }
@@ -482,7 +481,7 @@ void Vip::UnBindInstances(Player* player)
     }
 
     if (count)
-        storeUnbind.emplace(guid, GameTime::GetGameTime().count());
+        storeUnbind.emplace(guid, GameTime::GetGameTime());
     else
     {
         handler.PSendSysMessage("> Нечего сбрасывать");
@@ -524,11 +523,11 @@ void Vip::LoadRates()
     {
         Field* fields = result->Fetch();
 
-        auto level          = fields[0].GetUInt8();
-        auto rateXP         = fields[1].GetFloat();
-        auto rateHonor      = fields[2].GetFloat();
-        auto rateArenaPoint = fields[3].GetFloat();
-        auto rateReputaion  = fields[4].GetFloat();
+        auto level          = fields[0].Get<uint8>();
+        auto rateXP         = fields[1].Get<float>();
+        auto rateHonor      = fields[2].Get<float>();
+        auto rateArenaPoint = fields[3].Get<float>();
+        auto rateReputaion  = fields[4].Get<float>();
 
         if (!CheckRate(level, { rateXP, rateHonor, rateArenaPoint, rateReputaion }))
             continue;
@@ -561,12 +560,7 @@ void Vip::LoadAccounts()
 
     do
     {
-        Field* fields = result->Fetch();
-
-        auto accountID  = fields[0].GetUInt32();
-        auto startTime  = fields[1].GetInt64();
-        auto endTime    = fields[2].GetInt64();
-        auto level      = fields[3].GetUInt8();
+        auto const& [accountID, startTime, endTime, level] = result->FetchTuple<uint32, Seconds, Seconds, uint8>();
 
         if (level > MAX_VIP_LEVEL)
         {
@@ -574,9 +568,7 @@ void Vip::LoadAccounts()
             continue;
         }
 
-        auto info = std::make_tuple(startTime, endTime, level);
-
-        store.emplace(accountID, info);
+        store.emplace(accountID, std::make_tuple(startTime, endTime, level));
 
     } while (result->NextRow());
 
@@ -604,8 +596,8 @@ void Vip::LoadUnbinds()
     {
         Field* fields = result->Fetch();
 
-        auto guid = fields[0].GetUInt64();
-        auto unbindTime = fields[1].GetUInt64();
+        auto guid = fields[0].Get<uint64>();
+        auto unbindTime = fields[1].Get<uint64>();
 
         storeUnbind.emplace(guid, unbindTime);
 
@@ -635,8 +627,8 @@ void Vip::LoadVipVendors()
     {
         Field* fields = result->Fetch();
 
-        auto creatureEntry = fields[0].GetUInt32();
-        auto vipLevel = fields[1].GetUInt8();
+        auto creatureEntry = fields[0].Get<uint32>();
+        auto vipLevel = fields[1].Get<uint8>();
 
         CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureEntry);
         if (!creatureTemplate)
@@ -839,7 +831,7 @@ namespace fmt
                 auto const& [startTime, endTime, level] = *vipInfo;
 
                 info = Warhead::StringFormat("Start time: {}. End time: {}. Level: {}",
-                    Warhead::Time::TimeToHumanReadable(startTime), Warhead::Time::TimeToHumanReadable(endTime), level);
+                    Warhead::Time::TimeToHumanReadable(startTime.count()), Warhead::Time::TimeToHumanReadable(endTime.count()), level);
             }
 
             return formatter<string_view>::format(info, ctx);

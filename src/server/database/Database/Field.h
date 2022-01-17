@@ -20,10 +20,26 @@
 
 #include "DatabaseEnvFwd.h"
 #include "Define.h"
+#include "Duration.h"
 #include <array>
 #include <string>
 #include <string_view>
 #include <vector>
+
+namespace Warhead::Types
+{
+    template <typename T>
+    using is_chrono_v = std::enable_if_t<std::is_same_v<Milliseconds, T>
+        || std::is_same_v<Seconds, T>
+        || std::is_same_v<Minutes, T>
+        || std::is_same_v<Hours, T>
+        || std::is_same_v<Days, T>
+        || std::is_same_v<Weeks, T>
+        || std::is_same_v<Years, T>
+        || std::is_same_v<Months, T>, T>;
+}
+
+using Binary = std::vector<uint8>;
 
 enum class DatabaseFieldTypes : uint8
 {
@@ -41,11 +57,11 @@ enum class DatabaseFieldTypes : uint8
 
 struct QueryResultFieldMetadata
 {
-    std::string_view TableName = {};
-    std::string_view TableAlias = {};
-    std::string_view Name = {};
-    std::string_view Alias = {};
-    std::string_view TypeName = {};
+    std::string TableName{};
+    std::string TableAlias{};
+    std::string Name{};
+    std::string Alias{};
+    std::string TypeName{};
     uint32 Index = 0;
     DatabaseFieldTypes Type = DatabaseFieldTypes::Null;
 };
@@ -89,32 +105,42 @@ public:
     Field();
     ~Field() = default;
 
-    bool GetBool() const // Wrapper, actually gets integer
+    template<typename T>
+    inline std::enable_if_t<std::is_arithmetic_v<T>, T> Get() const
     {
-        return GetUInt8() == 1 ? true : false;
+        return GetData<T>();
     }
 
-    uint8 GetUInt8() const;
-    int8 GetInt8() const;
-    uint16 GetUInt16() const;
-    int16 GetInt16() const;
-    uint32 GetUInt32() const;
-    int32 GetInt32() const;
-    uint64 GetUInt64() const;
-    int64 GetInt64() const;
-    float GetFloat() const;
-    double GetDouble() const;
-    char const* GetCString() const;
-    std::string GetString() const;
-    std::string_view GetStringView() const;
-    std::vector<uint8> GetBinary() const;
-
-    template <size_t S>
-    std::array<uint8, S> GetBinary() const
+    template<typename T>
+    inline std::enable_if_t<std::is_same_v<std::string, T>, T> Get() const
     {
-        std::array<uint8, S> buf;
+        return GetDataString();
+    }
+
+    template<typename T>
+    inline std::enable_if_t<std::is_same_v<std::string_view, T>, T> Get() const
+    {
+        return GetDataStringView();
+    }
+
+    template<typename T>
+    inline std::enable_if_t<std::is_same_v<Binary, T>, T> Get() const
+    {
+        return GetDataBinary();
+    }
+
+    template <typename T, size_t S>
+    inline std::enable_if_t<std::is_same_v<Binary, T>, std::array<uint8, S>> Get() const
+    {
+        std::array<uint8, S> buf = {};
         GetBinarySizeChecked(buf.data(), S);
         return buf;
+    }
+
+    template<typename T>
+    inline Warhead::Types::is_chrono_v<T> Get(bool convertToUin32 = true) const
+    {
+        return convertToUin32 ? T(GetData<uint32>()) : T(GetData<uint64>());
     }
 
     bool IsNull() const
@@ -139,6 +165,13 @@ protected:
     bool IsNumeric() const;
 
 private:
+    template<typename T>
+    T GetData() const;
+
+    std::string GetDataString() const;
+    std::string_view GetDataStringView() const;
+    Binary GetDataBinary() const;
+
     QueryResultFieldMetadata const* meta;
     void LogWrongType(char const* getter) const;
     void SetMetadata(QueryResultFieldMetadata const* fieldMeta);

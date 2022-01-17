@@ -1204,7 +1204,7 @@ Motd = "Welcome to an WarheadCore server."
 
 #    PLEASE NOTE: another (hardcoded) text will appear below the MOTD:
 #
-#        "This server runs on AzerothCore www.azerothcore.org"
+#        "This server runs on WarheadCore www.azerothcore.org"
 #
 #    All the WarheadCore contributors, as well as its father projects (MaNGOS, TrinityCore, etc..),
 #    have worked for free to provide you this software. Please do not remove the credits.
@@ -1756,6 +1756,14 @@ ListenRange.TextEmote = 40
 #        Default:     300
 
 ListenRange.Yell = 300
+
+#
+#    Creature.MovingStopTimeForPlayer
+#        Description: Time (in milliseconds) during which creature will not move after
+#                     interaction with player.
+#        Default: 180000
+
+Creature.MovingStopTimeForPlayer = 180000
 
 #    WaypointMovementStopTimeForPlayer
 #        Description: Specifies the time (in seconds) that a creature with waypoint

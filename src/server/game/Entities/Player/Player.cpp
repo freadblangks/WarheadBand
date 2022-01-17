@@ -32,6 +32,7 @@
 #include "CharacterCache.h"
 #include "CharacterDatabaseCleaner.h"
 #include "Chat.h"
+#include "CombatLogPackets.h"
 #include "Common.h"
 #include "ConditionMgr.h"
 #include "Config.h"
@@ -175,8 +176,6 @@ Player::Player(WorldSession* session): Unit(true), m_mover(this)
     if (AccountMgr::IsPlayerAccount(GetSession()->GetSecurity()))
         SetAcceptWhispers(true);
 
-    m_comboPoints = 0;
-
     m_usedTalentCount = 0;
     m_questRewardTalentCount = 0;
     m_extraBonusTalentCount = 0;
@@ -240,6 +239,7 @@ Player::Player(WorldSession* session): Unit(true), m_mover(this)
 
     m_MirrorTimerFlags = UNDERWATER_NONE;
     m_MirrorTimerFlagsLast = UNDERWATER_NONE;
+    m_isInWater = false;
     m_drunkTimer = 0;
     m_deathTimer = 0;
     m_deathExpireTime = 0;
@@ -396,7 +396,6 @@ Player::Player(WorldSession* session): Unit(true), m_mover(this)
 
     // Ours
     m_NeedToSaveGlyphs = false;
-    m_comboPointGain = 0;
     m_MountBlockId = 0;
     m_realDodge = 0.0f;
     m_realParry = 0.0f;
@@ -792,13 +791,13 @@ uint32 Player::EnvironmentalDamage(EnviromentalDamage type, uint32 damage)
 
     Unit::DealDamageMods(this, damage, &absorb);
 
-    WorldPacket data(SMSG_ENVIRONMENTALDAMAGELOG, (21));
-    data << GetGUID();
-    data << uint8(type != DAMAGE_FALL_TO_VOID ? type : DAMAGE_FALL);
-    data << uint32(damage);
-    data << uint32(absorb);
-    data << uint32(resist);
-    SendMessageToSet(&data, true);
+    WorldPackets::CombatLog::EnvironmentalDamageLog packet;
+    packet.Victim = GetGUID();
+    packet.Type = type != DAMAGE_FALL_TO_VOID ? type : DAMAGE_FALL;
+    packet.Amount = damage;
+    packet.Absorbed = absorb;
+    packet.Resisted = resist;
+    SendMessageToSet(packet.Write(), true);
 
     uint32 final_damage = Unit::DealDamage(this, this, damage, nullptr, SELF_DAMAGE, SPELL_SCHOOL_MASK_NORMAL, nullptr, false);
 
@@ -1102,10 +1101,10 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
 
     Field* fields = result->Fetch();
 
-    ObjectGuid::LowType guidLow = fields[0].GetUInt32();
-    uint8 plrRace = fields[2].GetUInt8();
-    uint8 plrClass = fields[3].GetUInt8();
-    uint8 gender = fields[4].GetUInt8();
+    ObjectGuid::LowType guidLow = fields[0].Get<uint32>();
+    uint8 plrRace = fields[2].Get<uint8>();
+    uint8 plrClass = fields[3].Get<uint8>();
+    uint8 gender = fields[4].Get<uint8>();
 
     ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(guidLow);
 
@@ -1122,21 +1121,21 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
     }
 
     *data << guid;
-    *data << fields[1].GetString();                          // name
+    *data << fields[1].Get<std::string>();                          // name
     *data << uint8(plrRace);                                 // race
     *data << uint8(plrClass);                                // class
     *data << uint8(gender);                                  // gender
 
-    uint8 skin = fields[5].GetUInt8();
-    uint8 face = fields[6].GetUInt8();
-    uint8 hairStyle = fields[7].GetUInt8();
-    uint8 hairColor = fields[8].GetUInt8();
-    uint8 facialStyle = fields[9].GetUInt8();
+    uint8 skin = fields[5].Get<uint8>();
+    uint8 face = fields[6].Get<uint8>();
+    uint8 hairStyle = fields[7].Get<uint8>();
+    uint8 hairColor = fields[8].Get<uint8>();
+    uint8 facialStyle = fields[9].Get<uint8>();
 
     uint32 charFlags = 0;
-    uint32 playerFlags = fields[17].GetUInt32();
-    uint16 atLoginFlags = fields[18].GetUInt16();
-    uint32 zone = (atLoginFlags & AT_LOGIN_FIRST) != 0 ? 0 : fields[11].GetUInt16(); // if first login do not show the zone
+    uint32 playerFlags = fields[17].Get<uint32>();
+    uint16 atLoginFlags = fields[18].Get<uint16>();
+    uint32 zone = (atLoginFlags & AT_LOGIN_FIRST) != 0 ? 0 : fields[11].Get<uint16>(); // if first login do not show the zone
 
     *data << uint8(skin);
     *data << uint8(face);
@@ -1144,15 +1143,15 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
     *data << uint8(hairColor);
     *data << uint8(facialStyle);
 
-    *data << uint8(fields[10].GetUInt8());                   // level
+    *data << uint8(fields[10].Get<uint8>());                   // level
     *data << uint32(zone);                                   // zone
-    *data << uint32(fields[12].GetUInt16());                 // map
+    *data << uint32(fields[12].Get<uint16>());                 // map
 
-    *data << fields[13].GetFloat();                          // x
-    *data << fields[14].GetFloat();                          // y
-    *data << fields[15].GetFloat();                          // z
+    *data << fields[13].Get<float>();                          // x
+    *data << fields[14].Get<float>();                          // y
+    *data << fields[15].Get<float>();                          // z
 
-    *data << uint32(fields[16].GetUInt32());                 // guild id
+    *data << uint32(fields[16].Get<uint32>());                 // guild id
 
     if (atLoginFlags & AT_LOGIN_RESURRECT)
         playerFlags &= ~PLAYER_FLAGS_GHOST;
@@ -1164,11 +1163,11 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
         charFlags |= CHARACTER_FLAG_GHOST;
     if (atLoginFlags & AT_LOGIN_RENAME)
         charFlags |= CHARACTER_FLAG_RENAME;
-    if (fields[23].GetUInt32())
+    if (fields[23].Get<uint32>())
         charFlags |= CHARACTER_FLAG_LOCKED_BY_BILLING;
     if (CONF_GET_BOOL("DeclinedNames"))
     {
-        if (!fields[25].GetString().empty())
+        if (!fields[25].Get<std::string>().empty())
             charFlags |= CHARACTER_FLAG_DECLINED;
     }
     else
@@ -1195,14 +1194,14 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
     uint32 petFamily = 0;
 
     // show pet at selection character in character list only for non-ghost character
-    if (result && !(playerFlags & PLAYER_FLAGS_GHOST) && (plrClass == CLASS_WARLOCK || plrClass == CLASS_HUNTER || (plrClass == CLASS_DEATH_KNIGHT && (fields[21].GetUInt32()&PLAYER_EXTRA_SHOW_DK_PET))))
+    if (result && !(playerFlags & PLAYER_FLAGS_GHOST) && (plrClass == CLASS_WARLOCK || plrClass == CLASS_HUNTER || (plrClass == CLASS_DEATH_KNIGHT && (fields[21].Get<uint32>()&PLAYER_EXTRA_SHOW_DK_PET))))
     {
-        uint32 entry = fields[19].GetUInt32();
+        uint32 entry = fields[19].Get<uint32>();
         CreatureTemplate const* creatureInfo = sObjectMgr->GetCreatureTemplate(entry);
         if (creatureInfo)
         {
-            petDisplayId = fields[20].GetUInt32();
-            petLevel = fields[21].GetUInt16();
+            petDisplayId = fields[20].Get<uint32>();
+            petLevel = fields[21].Get<uint16>();
             petFamily = creatureInfo->family;
         }
     }
@@ -1211,7 +1210,7 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
     *data << uint32(petLevel);
     *data << uint32(petFamily);
 
-    Tokenizer equipment(fields[22].GetString(), ' ');
+    Tokenizer equipment(fields[22].Get<std::string>(), ' ');
     for (uint8 slot = 0; slot < INVENTORY_SLOT_BAG_END; ++slot)
     {
         uint32 visualBase = slot * 2;
@@ -2092,6 +2091,24 @@ bool Player::IsFalling() const
 {
     // Xinef: Added !IsInFlight check
     return GetPositionZ() < m_lastFallZ && !IsInFlight();
+}
+
+void Player::SetInWater(bool apply)
+{
+    if (m_isInWater == apply)
+        return;
+
+    //define player in water by opcodes
+    //move player's guid into HateOfflineList of those mobs
+    //which can't swim and move guid back into ThreatList when
+    //on surface.
+    //TODO: exist also swimming mobs, and function must be symmetric to enter/leave water
+    m_isInWater = apply;
+
+    // remove auras that need water/land
+    RemoveAurasWithInterruptFlags(apply ? AURA_INTERRUPT_FLAG_NOT_ABOVEWATER : AURA_INTERRUPT_FLAG_NOT_UNDERWATER);
+
+    getHostileRefMgr().updateThreatTables();
 }
 
 bool Player::IsInAreaTriggerRadius(const AreaTrigger* trigger) const
@@ -3481,11 +3498,11 @@ void Player::_LoadSpellCooldowns(PreparedQueryResult result)
         do
         {
             Field* fields = result->Fetch();
-            uint32 spell_id = fields[0].GetUInt32();
-            uint16 category = fields[1].GetUInt16();
-            uint32 item_id  = fields[2].GetUInt32();
-            uint32 db_time  = fields[3].GetUInt32();
-            bool needSend   = fields[4].GetBool();
+            uint32 spell_id = fields[0].Get<uint32>();
+            uint16 category = fields[1].Get<uint16>();
+            uint32 item_id  = fields[2].Get<uint32>();
+            uint32 db_time  = fields[3].Get<uint32>();
+            bool needSend   = fields[4].Get<bool>();
 
             if (!sSpellMgr->GetSpellInfo(spell_id))
             {
@@ -3918,7 +3935,7 @@ void Player::DeleteFromDB(ObjectGuid::LowType lowGuid, uint32 accountId, bool up
                         do
                         {
                             Field* fields = resultItems->Fetch();
-                            uint32 mailId = fields[14].GetUInt32();
+                            uint32 mailId = fields[14].Get<uint32>();
                             if (Item* mailItem = _LoadMailedItem(playerGuid, nullptr, mailId, nullptr, fields))
                             {
                                 itemsByMail[mailId].push_back(mailItem);
@@ -3930,14 +3947,14 @@ void Player::DeleteFromDB(ObjectGuid::LowType lowGuid, uint32 accountId, bool up
                     {
                         Field* mailFields = resultMail->Fetch();
 
-                        uint32 mail_id       = mailFields[0].GetUInt32();
-                        uint8 mailType       = mailFields[1].GetUInt8();
-                        uint16 mailTemplateId = mailFields[2].GetUInt16();
-                        uint32 sender        = mailFields[3].GetUInt32();
-                        std::string subject  = mailFields[4].GetString();
-                        std::string body     = mailFields[5].GetString();
-                        uint32 money         = mailFields[6].GetUInt32();
-                        bool has_items       = mailFields[7].GetBool();
+                        uint32 mail_id       = mailFields[0].Get<uint32>();
+                        uint8 mailType       = mailFields[1].Get<uint8>();
+                        uint16 mailTemplateId = mailFields[2].Get<uint16>();
+                        uint32 sender        = mailFields[3].Get<uint32>();
+                        std::string subject  = mailFields[4].Get<std::string>();
+                        std::string body     = mailFields[5].Get<std::string>();
+                        uint32 money         = mailFields[6].Get<uint32>();
+                        bool has_items       = mailFields[7].Get<bool>();
 
                         // We can return mail now
                         // So firstly delete the old one
@@ -3993,7 +4010,7 @@ void Player::DeleteFromDB(ObjectGuid::LowType lowGuid, uint32 accountId, bool up
                 {
                     do
                     {
-                        ObjectGuid::LowType petguidlow = (*resultPets)[0].GetUInt32();
+                        ObjectGuid::LowType petguidlow = (*resultPets)[0].Get<uint32>();
                         Pet::DeleteFromDB(petguidlow);
                     } while (resultPets->NextRow());
                 }
@@ -4007,7 +4024,7 @@ void Player::DeleteFromDB(ObjectGuid::LowType lowGuid, uint32 accountId, bool up
                 {
                     do
                     {
-                        if (Player* pFriend = ObjectAccessor::FindPlayerByLowGUID((*resultFriends)[0].GetUInt32()))
+                        if (Player* pFriend = ObjectAccessor::FindPlayerByLowGUID((*resultFriends)[0].Get<uint32>()))
                         {
                             pFriend->GetSocial()->RemoveFromSocialList(playerGuid, SOCIAL_FLAG_ALL);
                             sSocialMgr->SendFriendStatus(pFriend, FRIEND_REMOVED, playerGuid, false);
@@ -4222,7 +4239,7 @@ void Player::DeleteOldCharacters(uint32 keepDays)
         do
         {
             Field* fields = result->Fetch();
-            Player::DeleteFromDB(fields[0].GetUInt32(), fields[1].GetUInt32(), true, true);
+            Player::DeleteFromDB(fields[0].Get<uint32>(), fields[1].Get<uint32>(), true, true);
         } while (result->NextRow());
     }
 }
@@ -5501,8 +5518,7 @@ void Player::SaveRecallPosition()
     m_recallO = GetOrientation();
 }
 
-// pussywizard!
-void Player::SendMessageToSetInRange(WorldPacket* data, float dist, bool self, bool includeMargin, Player const* skipped_rcvr)
+void Player::SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin, Player const* skipped_rcvr) const
 {
     if (self)
         GetSession()->SendPacket(data);
@@ -5514,8 +5530,7 @@ void Player::SendMessageToSetInRange(WorldPacket* data, float dist, bool self, b
     Cell::VisitWorldObjects(this, notifier, dist);
 }
 
-// pussywizard!
-void Player::SendMessageToSetInRange_OwnTeam(WorldPacket* data, float dist, bool self)
+void Player::SendMessageToSetInRange_OwnTeam(WorldPacket const* data, float dist, bool self) const
 {
     if (self)
         GetSession()->SendPacket(data);
@@ -6097,7 +6112,7 @@ uint32 Player::GetArenaTeamIdFromDB(ObjectGuid guid, uint8 type)
     if (!result)
         return 0;
 
-    uint32 id = (*result)[0].GetUInt32();
+    uint32 id = (*result)[0].Get<uint32>();
     return id;
 }
 
@@ -6113,7 +6128,7 @@ uint32 Player::GetZoneIdFromDB(ObjectGuid guid)
         return 0;
 
     Field* fields = result->Fetch();
-    uint32 zone = fields[0].GetUInt16();
+    uint32 zone = fields[0].Get<uint16>();
 
     if (!zone)
     {
@@ -6128,10 +6143,10 @@ uint32 Player::GetZoneIdFromDB(ObjectGuid guid)
         }
 
         fields = posResult->Fetch();
-        uint32 map = fields[0].GetUInt16();
-        float posx = fields[1].GetFloat();
-        float posy = fields[2].GetFloat();
-        float posz = fields[3].GetFloat();
+        uint32 map = fields[0].Get<uint16>();
+        float posx = fields[1].Get<float>();
+        float posy = fields[2].Get<float>();
+        float posz = fields[3].Get<float>();
 
         if (!sMapStore.LookupEntry(map))
             return 0;
@@ -6204,8 +6219,8 @@ void Player::DuelComplete(DuelCompleteType type)
     if (duel->State == DUEL_STATE_COMPLETED)
         return;
 
-    Player* opponent = duel->Opponent;
-    duel->State = DUEL_STATE_COMPLETED;
+    Player* opponent      = duel->Opponent;
+    duel->State           = DUEL_STATE_COMPLETED;
     opponent->duel->State = DUEL_STATE_COMPLETED;
 
     LOG_DEBUG("entities.unit", "Player::DuelComplete: Player '{}' ({}), Opponent: '{}' ({})",
@@ -6221,8 +6236,8 @@ void Player::DuelComplete(DuelCompleteType type)
 
     if (type != DUEL_INTERRUPTED)
     {
-        data.Initialize(SMSG_DUEL_WINNER, (1+20));          // we guess size
-        data << uint8(type == DUEL_WON ? 0 : 1);            // 0 = just won; 1 = fled
+        data.Initialize(SMSG_DUEL_WINNER, (1 + 20)); // we guess size
+        data << uint8(type == DUEL_WON ? 0 : 1);     // 0 = just won; 1 = fled
         data << opponent->GetName();
         data << GetName();
         SendMessageToSet(&data, true);
@@ -6232,43 +6247,43 @@ void Player::DuelComplete(DuelCompleteType type)
 
     switch (type)
     {
-        case DUEL_FLED:
-            // if initiator and opponent are on the same team
-            // or initiator and opponent are not PvP enabled, forcibly stop attacking
-            if (GetTeamId() == opponent->GetTeamId())
+    case DUEL_FLED:
+        // if initiator and opponent are on the same team
+        // or initiator and opponent are not PvP enabled, forcibly stop attacking
+        if (GetTeamId() == opponent->GetTeamId())
+        {
+            AttackStop();
+            opponent->AttackStop();
+        }
+        else
+        {
+            if (!IsPvP())
             {
                 AttackStop();
+            }
+            if (!opponent->IsPvP())
+            {
                 opponent->AttackStop();
             }
-            else
-            {
-                if (!IsPvP())
-                {
-                    AttackStop();
-                }
-                if (!opponent->IsPvP())
-                {
-                    opponent->AttackStop();
-                }
-            }
-            break;
-        case DUEL_WON:
-            UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOSE_DUEL, 1);
-            opponent->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_WIN_DUEL, 1);
+        }
+        break;
+    case DUEL_WON:
+        UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOSE_DUEL, 1);
+        opponent->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_WIN_DUEL, 1);
 
-            // Credit for quest Death's Challenge
-            if (getClass() == CLASS_DEATH_KNIGHT && opponent->GetQuestStatus(12733) == QUEST_STATUS_INCOMPLETE)
-            {
-                opponent->CastSpell(opponent, 52994, true);
-            }
+        // Credit for quest Death's Challenge
+        if (getClass() == CLASS_DEATH_KNIGHT && opponent->GetQuestStatus(12733) == QUEST_STATUS_INCOMPLETE)
+        {
+            opponent->CastSpell(opponent, 52994, true);
+        }
 
             // Honor points after duel (the winner) - ImpConfig
             if (uint32 amount = CONF_GET_INT("HonorPointsAfterDuel"))
                 duel->Opponent->RewardHonor(nullptr, 1, amount);
 
-            break;
-        default:
-            break;
+        break;
+    default:
+        break;
     }
 
     // Victory emote spell
@@ -6277,7 +6292,7 @@ void Player::DuelComplete(DuelCompleteType type)
         opponent->CastSpell(opponent, 52852, true);
     }
 
-    //Remove Duel Flag object
+    // Remove Duel Flag object
     GameObject* obj = GetMap()->GetGameObject(GetGuidValue(PLAYER_DUEL_ARBITER));
     if (obj)
     {
@@ -6285,7 +6300,7 @@ void Player::DuelComplete(DuelCompleteType type)
     }
 
     /* remove auras */
-    AuraApplicationMap &itsAuras = opponent->GetAppliedAuras();
+    AuraApplicationMap& itsAuras = opponent->GetAppliedAuras();
     for (AuraApplicationMap::iterator i = itsAuras.begin(); i != itsAuras.end();)
     {
         Aura const* aura = i->second->GetBase();
@@ -6299,7 +6314,7 @@ void Player::DuelComplete(DuelCompleteType type)
         }
     }
 
-    AuraApplicationMap &myAuras = GetAppliedAuras();
+    AuraApplicationMap& myAuras = GetAppliedAuras();
     for (AuraApplicationMap::iterator i = myAuras.begin(); i != myAuras.end();)
     {
         Aura const* aura = i->second->GetBase();
@@ -6310,16 +6325,20 @@ void Player::DuelComplete(DuelCompleteType type)
     }
 
     // cleanup combo points
-    if (GetComboTarget() == duel->Opponent->GetGUID())
+    if (GetComboTarget() == duel->Opponent)
+    {
         ClearComboPoints();
-    else if (GetComboTarget() == duel->Opponent->GetPetGUID())
+    }
+    else if (GetComboTargetGUID() == duel->Opponent->GetPetGUID())
+    {
         ClearComboPoints();
+    }
 
-    if (duel->Opponent->GetComboTarget() == GetGUID())
+    if (duel->Opponent->GetComboTarget() == this)
     {
         duel->Opponent->ClearComboPoints();
     }
-    else if (duel->Opponent->GetComboTarget() == GetPetGUID())
+    else if (duel->Opponent->GetComboTargetGUID() == GetPetGUID())
     {
         duel->Opponent->ClearComboPoints();
     }
@@ -8657,7 +8676,7 @@ Pet* Player::GetPet() const
         if (!pet)
             return nullptr;
 
-        if (IsInWorld() && pet)
+        if (IsInWorld())
             return pet;
 
         //there may be a guardian in slot
@@ -8666,6 +8685,136 @@ Pet* Player::GetPet() const
     }
 
     return nullptr;
+}
+
+Pet* Player::SummonPet(uint32 entry, float x, float y, float z, float ang, PetType petType, Milliseconds duration /*= 0s*/)
+{
+    PetStable& petStable = GetOrInitPetStable();
+
+    Pet* pet = new Pet(this, petType);
+
+    if (petType == SUMMON_PET && pet->LoadPetFromDB(this, entry, 0, false))
+    {
+        // Remove Demonic Sacrifice auras (known pet)
+        Unit::AuraEffectList const& auraClassScripts = GetAuraEffectsByType(SPELL_AURA_OVERRIDE_CLASS_SCRIPTS);
+        for (Unit::AuraEffectList::const_iterator itr = auraClassScripts.begin(); itr != auraClassScripts.end();)
+        {
+            if ((*itr)->GetMiscValue() == 2228)
+            {
+                RemoveAurasDueToSpell((*itr)->GetId());
+                itr = auraClassScripts.begin();
+            }
+            else
+                ++itr;
+        }
+
+        if (duration > 0s)
+            pet->SetDuration(duration);
+
+        // Generate a new name for the newly summoned ghoul
+        if (pet->IsPetGhoul())
+        {
+            std::string new_name = sObjectMgr->GeneratePetName(entry);
+            if (!new_name.empty())
+                pet->SetName(new_name);
+        }
+
+        return nullptr;
+    }
+
+    // petentry == 0 for hunter "call pet" (current pet summoned if any)
+    if (!entry)
+    {
+        delete pet;
+        return nullptr;
+    }
+
+    pet->Relocate(x, y, z, ang);
+    if (!pet->IsPositionValid())
+    {
+        LOG_ERROR("misc", "Player::SummonPet: Pet (%s, Entry: %d) not summoned. Suggested coordinates aren't valid (X: %f Y: %f)", pet->GetGUID().ToString().c_str(), pet->GetEntry(), pet->GetPositionX(), pet->GetPositionY());
+        delete pet;
+        return nullptr;
+    }
+
+    Map* map = GetMap();
+    uint32 pet_number = sObjectMgr->GeneratePetNumber();
+    if (!pet->Create(map->GenerateLowGuid<HighGuid::Pet>(), map, GetPhaseMask(), entry, pet_number))
+    {
+        LOG_ERROR("misc", "Player::SummonPet: No such creature entry %u", entry);
+        delete pet;
+        return nullptr;
+    }
+
+    if (petType == SUMMON_PET && petStable.CurrentPet)
+        RemovePet(nullptr, PET_SAVE_NOT_IN_SLOT);
+
+    pet->SetCreatorGUID(GetGUID());
+    pet->SetFaction(GetFaction());
+    pet->setPowerType(POWER_MANA);
+    pet->SetUInt32Value(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_NONE);
+    pet->SetUInt32Value(UNIT_FIELD_BYTES_1, 0);
+    pet->InitStatsForLevel(getLevel());
+
+    SetMinion(pet, true);
+
+    switch (petType)
+    {
+    case SUMMON_PET:
+    {
+        if (pet->GetCreatureTemplate()->type == CREATURE_TYPE_DEMON || pet->GetCreatureTemplate()->type == CREATURE_TYPE_UNDEAD)
+            pet->GetCharmInfo()->SetPetNumber(pet_number, true); // Show pet details tab (Shift+P) only for demons & undead
+        else
+            pet->GetCharmInfo()->SetPetNumber(pet_number, false);
+
+        pet->SetUInt32Value(UNIT_FIELD_BYTES_0, 2048);
+        pet->SetUInt32Value(UNIT_FIELD_PETEXPERIENCE, 0);
+        pet->SetUInt32Value(UNIT_FIELD_PETNEXTLEVELEXP, 1000);
+        pet->SetFullHealth();
+        pet->SetPower(POWER_MANA, pet->GetMaxPower(POWER_MANA));
+        pet->SetUInt32Value(UNIT_FIELD_PET_NAME_TIMESTAMP, uint32(time(nullptr))); // cast can't be helped in this case
+        break;
+    }
+    default:
+        break;
+    }
+
+    map->AddToMap(pet->ToCreature(), true);
+
+    ASSERT(!petStable.CurrentPet && (petType != HUNTER_PET || !petStable.GetUnslottedHunterPet()));
+    pet->FillPetInfo(&petStable.CurrentPet.emplace());
+
+    if (petType == SUMMON_PET)
+    {
+        pet->InitPetCreateSpells();
+        pet->InitTalentForLevel();
+        pet->SavePetToDB(PET_SAVE_AS_CURRENT);
+        PetSpellInitialize();
+
+        // Remove Demonic Sacrifice auras (known pet)
+        Unit::AuraEffectList const& auraClassScripts = GetAuraEffectsByType(SPELL_AURA_OVERRIDE_CLASS_SCRIPTS);
+        for (Unit::AuraEffectList::const_iterator itr = auraClassScripts.begin(); itr != auraClassScripts.end();)
+        {
+            if ((*itr)->GetMiscValue() == 2228)
+            {
+                RemoveAurasDueToSpell((*itr)->GetId());
+                itr = auraClassScripts.begin();
+            }
+            else
+                ++itr;
+        }
+    }
+
+    if (duration > 0s)
+        pet->SetDuration(duration);
+
+    if (NeedSendSpectatorData() && pet->GetCreatureTemplate()->family)
+    {
+        ArenaSpectator::SendCommand_UInt32Value(FindMap(), GetGUID(), "PHP", (uint32)pet->GetHealthPct());
+        ArenaSpectator::SendCommand_UInt32Value(FindMap(), GetGUID(), "PET", pet->GetCreatureTemplate()->family);
+    }
+
+    return pet;
 }
 
 void Player::RemovePet(Pet* pet, PetSaveMode mode, bool returnreagent)
@@ -8713,10 +8862,39 @@ void Player::RemovePet(Pet* pet, PetSaveMode mode, bool returnreagent)
         m_temporaryUnsummonedPetNumber = 0;
     }
 
-    if (!pet || pet->GetOwnerGUID() != GetGUID())
+    if (!pet)
+    {
+        if (mode == PET_SAVE_NOT_IN_SLOT && m_petStable && m_petStable->CurrentPet)
+        {
+            // Handle removing pet while it is in "temporarily unsummoned" state, for example on mount
+            CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_CHAR_PET_SLOT_BY_ID);
+            stmt->SetData(0, PET_SAVE_NOT_IN_SLOT);
+            stmt->SetData(1, GetGUID().GetCounter());
+            stmt->SetData(2, m_petStable->CurrentPet->PetNumber);
+            CharacterDatabase.Execute(stmt);
+
+            m_petStable->UnslottedPets.push_back(std::move(*m_petStable->CurrentPet));
+            m_petStable->CurrentPet.reset();
+        }
+
         return;
+    }
 
     pet->CombatStop();
+
+    if (returnreagent)
+    {
+        switch (pet->GetEntry())
+        {
+            //warlock pets except imp are removed(?) when logging out
+            case 1860:
+            case 1863:
+            case 417:
+            case 17252:
+                mode = PET_SAVE_NOT_IN_SLOT;
+                break;
+        }
+    }
 
     // only if current pet in slot
     pet->SavePetToDB(mode);
@@ -8752,6 +8930,138 @@ void Player::RemovePet(Pet* pet, PetSaveMode mode, bool returnreagent)
         ArenaSpectator::SendCommand_UInt32Value(FindMap(), GetGUID(), "PHP", 0);
         ArenaSpectator::SendCommand_UInt32Value(FindMap(), GetGUID(), "PET", 0);
     }
+}
+
+bool Player::CanPetResurrect()
+{
+    PetStable* const petStable = GetPetStable();
+    if (!petStable)
+    {
+        // No pets
+        return false;
+    }
+
+    auto const& currectPet = petStable->CurrentPet;
+    auto const& unslottedHunterPet = petStable->GetUnslottedHunterPet();
+
+    if (!currectPet && !unslottedHunterPet)
+    {
+        // No pets
+        return false;
+    }
+
+    // Check current pet
+    if (currectPet && !currectPet->Health)
+    {
+        return true;
+    }
+
+    // Check dismiss/unslotted hunter pet
+    if (unslottedHunterPet && !unslottedHunterPet->Health)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+bool Player::IsExistPet()
+{
+    PetStable* const petStable = GetPetStable();
+    return petStable && (petStable->CurrentPet || petStable->GetUnslottedHunterPet());
+}
+
+Pet* Player::CreatePet(Creature* creatureTarget, uint32 spellID /*= 0*/)
+{
+    if (IsExistPet())
+    {
+        return nullptr;
+    }
+
+    if (!creatureTarget || creatureTarget->IsPet() || creatureTarget->GetTypeId() == TYPEID_PLAYER)
+    {
+        return nullptr;
+    }
+
+    CreatureTemplate const* creatrueTemplate = sObjectMgr->GetCreatureTemplate(creatureTarget->GetEntry());
+    if (!creatrueTemplate->family)
+    {
+        // Creatures with family 0 crashes the server
+        return nullptr;
+    }
+
+    // Everything looks OK, create new pet
+    Pet* pet = CreateTamedPetFrom(creatureTarget, spellID);
+    if (!pet)
+    {
+        return nullptr;
+    }
+
+    // "kill" original creature
+    creatureTarget->DespawnOrUnsummon();
+
+    // calculate proper level
+    uint8 level = (creatureTarget->getLevel() < (getLevel() - 5)) ? (getLevel() - 5) : getLevel();
+
+    // prepare visual effect for levelup
+    pet->SetUInt32Value(UNIT_FIELD_LEVEL, level - 1);
+
+    // add to world
+    pet->GetMap()->AddToMap(pet->ToCreature());
+
+    // visual effect for levelup
+    pet->SetUInt32Value(UNIT_FIELD_LEVEL, level);
+
+    // caster have pet now
+    SetMinion(pet, true);
+
+    pet->InitTalentForLevel();
+
+    pet->SavePetToDB(PET_SAVE_AS_CURRENT);
+    PetSpellInitialize();
+
+    return pet;
+}
+
+Pet* Player::CreatePet(uint32 creatureEntry, uint32 spellID /*= 0*/)
+{
+    if (IsExistPet())
+    {
+        return nullptr;
+    }
+
+    CreatureTemplate const* creatrueTemplate = sObjectMgr->GetCreatureTemplate(creatureEntry);
+    if (!creatrueTemplate->family)
+    {
+        // Creatures with family 0 crashes the server
+        return nullptr;
+    }
+
+    // Everything looks OK, create new pet
+    Pet* pet = CreateTamedPetFrom(creatureEntry, spellID);
+    if (!pet)
+    {
+        return nullptr;
+    }
+
+    // prepare visual effect for levelup
+    pet->SetUInt32Value(UNIT_FIELD_LEVEL, getLevel() - 1);
+
+    // add to world
+    pet->GetMap()->AddToMap(pet->ToCreature());
+
+    // visual effect for levelup
+    pet->SetUInt32Value(UNIT_FIELD_LEVEL, getLevel());
+
+    // caster have pet now
+    SetMinion(pet, true);
+
+    pet->InitTalentForLevel();
+
+    pet->SavePetToDB(PET_SAVE_AS_CURRENT);
+    PetSpellInitialize();
+
+    return pet;
 }
 
 void Player::StopCastingCharm()
@@ -9499,7 +9809,7 @@ void Player::LeaveAllArenaTeams(ObjectGuid guid)
     do
     {
         Field* fields = result->Fetch();
-        uint32 arenaTeamId = fields[0].GetUInt32();
+        uint32 arenaTeamId = fields[0].Get<uint32>();
         if (arenaTeamId != 0)
         {
             ArenaTeam* arenaTeam = sArenaTeamMgr->GetArenaTeamById(arenaTeamId);
@@ -10036,7 +10346,7 @@ bool Player::BuyItemFromVendorSlot(ObjectGuid vendorguid, uint32 vendorslot, uin
     ConditionList conditions = sConditionMgr->GetConditionsForNpcVendorEvent(creature->GetEntry(), item);
     if (!sConditionMgr->IsObjectMeetToConditions(this, creature, conditions))
     {
-        //TC_LOG_DEBUG("condition", "BuyItemFromVendor: conditions not met for creature entry {} item {}", creature->GetEntry(), item);
+        //LOG_DEBUG("condition", "BuyItemFromVendor: conditions not met for creature entry {} item {}", creature->GetEntry(), item);
         SendBuyError(BUY_ERR_CANT_FIND_ITEM, creature, item, 0);
         return false;
     }
@@ -10820,75 +11130,6 @@ void Player::SetSelection(ObjectGuid guid)
 
     if (NeedSendSpectatorData())
         ArenaSpectator::SendCommand_GUID(FindMap(), GetGUID(), "TRG", guid);
-}
-
-void Player::SendComboPoints()
-{
-    Unit* combotarget = ObjectAccessor::GetUnit(*this, m_comboTarget);
-    if (combotarget)
-    {
-        WorldPacket data;
-        if (m_mover != this)
-        {
-            data.Initialize(SMSG_PET_UPDATE_COMBO_POINTS, m_mover->GetPackGUID().size() + combotarget->GetPackGUID().size() + 1);
-            data << m_mover->GetPackGUID();
-        }
-        else
-            data.Initialize(SMSG_UPDATE_COMBO_POINTS, combotarget->GetPackGUID().size() + 1);
-        data << combotarget->GetPackGUID();
-        data << uint8(m_comboPoints);
-        GetSession()->SendPacket(&data);
-    }
-}
-
-void Player::AddComboPoints(Unit* target, int8 count)
-{
-    if (!count)
-        return;
-
-    int8* comboPoints = &m_comboPoints;
-
-    // without combo points lost (duration checked in aura)
-    RemoveAurasByType(SPELL_AURA_RETAIN_COMBO_POINTS);
-
-    if (target->GetGUID() == m_comboTarget)
-        *comboPoints += count;
-    else
-    {
-        if (m_comboTarget)
-            if (Unit* target2 = ObjectAccessor::GetUnit(*this, m_comboTarget))
-                target2->RemoveComboPointHolder(GetGUID());
-
-        m_comboTarget = target->GetGUID();
-        *comboPoints = count;
-
-        target->AddComboPointHolder(GetGUID());
-    }
-
-    if (*comboPoints > 5)
-        *comboPoints = 5;
-    else if (*comboPoints < 0)
-        *comboPoints = 0;
-
-    SendComboPoints();
-}
-
-void Player::ClearComboPoints()
-{
-    if (!m_comboTarget)
-        return;
-
-    // without combopoints lost (duration checked in aura)
-    RemoveAurasByType(SPELL_AURA_RETAIN_COMBO_POINTS);
-
-    m_comboPoints = 0;
-
-    SendComboPoints();
-
-    if (Unit* target = ObjectAccessor::GetUnit(*this, m_comboTarget))
-        target->RemoveComboPointHolder(GetGUID());
-
-    m_comboTarget.Clear();
 }
 
 void Player::SetGroup(Group* group, int8 subgroup)
@@ -12422,6 +12663,7 @@ void Player::SetViewpoint(WorldObject* target, bool apply)
 
         if (target->isType(TYPEMASK_UNIT) && !GetVehicle())
             ((Unit*)target)->AddPlayerToVision(this);
+        SetSeer(target);
     }
     else
     {
@@ -12430,14 +12672,17 @@ void Player::SetViewpoint(WorldObject* target, bool apply)
 
         LOG_DEBUG("maps", "Player::CreateViewpoint: Player {} remove seer", GetName());
 
-        if (target->isType(TYPEMASK_UNIT) && !GetVehicle())
-            ((Unit*)target)->RemovePlayerFromVision(this);
-
         if (!RemoveGuidValue(PLAYER_FARSIGHT, target->GetGUID()))
         {
             LOG_FATAL("entities.player", "Player::CreateViewpoint: Player {} cannot remove current viewpoint!", GetName());
             return;
         }
+
+        if (target->isType(TYPEMASK_UNIT) && !GetVehicle())
+            static_cast<Unit*>(target)->RemovePlayerFromVision(this);
+
+        // must immediately set seer back otherwise may crash
+        SetSeer(this);
 
         //WorldPacket data(SMSG_CLEAR_FAR_SIGHT_IMMEDIATE, 0);
         //GetSession()->SendPacket(&data);
@@ -12890,9 +13135,9 @@ void Player::_LoadSkills(PreparedQueryResult result)
         do
         {
             Field* fields = result->Fetch();
-            uint16 skill    = fields[0].GetUInt16();
-            uint16 value    = fields[1].GetUInt16();
-            uint16 max      = fields[2].GetUInt16();
+            uint16 skill    = fields[0].Get<uint16>();
+            uint16 value    = fields[1].Get<uint16>();
+            uint16 max      = fields[2].Get<uint16>();
 
             SkillRaceClassInfoEntry const* rcEntry = GetSkillRaceClassInfo(skill, getRace(), getClass());
             if (!rcEntry)
@@ -13408,7 +13653,7 @@ void Player::AddKnownCurrency(uint32 itemId)
 void Player::UnsummonPetTemporaryIfAny()
 {
     Pet* pet = GetPet();
-    if (!pet || !pet->IsInWorld())
+    if (!pet)
         return;
 
     if (!m_temporaryUnsummonedPetNumber && pet->isControlled() && !pet->isTemporarySummoned())
@@ -14139,16 +14384,16 @@ void Player::_LoadGlyphs(PreparedQueryResult result)
     {
         Field* fields = result->Fetch();
 
-        uint8 spec = fields[0].GetUInt8();
+        uint8 spec = fields[0].Get<uint8>();
         if (spec >= m_specsCount)
             continue;
 
-        m_Glyphs[spec][0] = fields[1].GetUInt16();
-        m_Glyphs[spec][1] = fields[2].GetUInt16();
-        m_Glyphs[spec][2] = fields[3].GetUInt16();
-        m_Glyphs[spec][3] = fields[4].GetUInt16();
-        m_Glyphs[spec][4] = fields[5].GetUInt16();
-        m_Glyphs[spec][5] = fields[6].GetUInt16();
+        m_Glyphs[spec][0] = fields[1].Get<uint16>();
+        m_Glyphs[spec][1] = fields[2].Get<uint16>();
+        m_Glyphs[spec][2] = fields[3].Get<uint16>();
+        m_Glyphs[spec][3] = fields[4].Get<uint16>();
+        m_Glyphs[spec][4] = fields[5].Get<uint16>();
+        m_Glyphs[spec][5] = fields[6].Get<uint16>();
     } while (result->NextRow());
 }
 
@@ -14186,8 +14431,8 @@ void Player::_LoadTalents(PreparedQueryResult result)
         do
         {
             // xinef: checked
-            uint32 spellId = (*result)[0].GetUInt32();
-            uint8 specMask = (*result)[1].GetUInt8();
+            uint32 spellId = (*result)[0].Get<uint32>();
+            uint8 specMask = (*result)[1].Get<uint8>();
             addTalent(spellId, specMask, 0);
             TalentSpellPos const* talentPos = GetTalentSpellPos(spellId);
             ASSERT(talentPos);
@@ -14939,7 +15184,7 @@ void Player::_LoadInstanceTimeRestrictions(PreparedQueryResult result)
     do
     {
         Field* fields = result->Fetch();
-        _instanceResetTimes.insert(InstanceTimeMap::value_type(fields[0].GetUInt32(), fields[1].GetUInt64()));
+        _instanceResetTimes.insert(InstanceTimeMap::value_type(fields[0].Get<uint32>(), fields[1].Get<uint64>()));
     } while (result->NextRow());
 }
 
@@ -14949,7 +15194,7 @@ void Player::_LoadBrewOfTheMonth(PreparedQueryResult result)
     if (result)
     {
         Field* fields = result->Fetch();
-        lastEventId = fields[0].GetUInt32();
+        lastEventId = fields[0].Get<uint32>();
     }
 
     time_t curtime = GameTime::GetGameTime().count();
@@ -15008,22 +15253,22 @@ void Player::_LoadPetStable(uint8 petStableSlots, PreparedQueryResult result)
         {
             Field* fields = result->Fetch();
             PetStable::PetInfo petInfo;
-            petInfo.PetNumber = fields[0].GetUInt32();
-            petInfo.CreatureId = fields[1].GetUInt32();
-            petInfo.DisplayId = fields[2].GetUInt32();
-            petInfo.Level = fields[3].GetUInt16();
-            petInfo.Experience = fields[4].GetUInt32();
-            petInfo.ReactState = ReactStates(fields[5].GetUInt8());
-            PetSaveMode slot = PetSaveMode(fields[6].GetUInt8());
-            petInfo.Name = fields[7].GetString();
-            petInfo.WasRenamed = fields[8].GetBool();
-            petInfo.Health = fields[9].GetUInt32();
-            petInfo.Mana = fields[10].GetUInt32();
-            petInfo.Happiness = fields[11].GetUInt32();
-            petInfo.ActionBar = fields[12].GetString();
-            petInfo.LastSaveTime = fields[13].GetUInt32();
-            petInfo.CreatedBySpellId = fields[14].GetUInt32();
-            petInfo.Type = PetType(fields[15].GetUInt8());
+            petInfo.PetNumber = fields[0].Get<uint32>();
+            petInfo.CreatureId = fields[1].Get<uint32>();
+            petInfo.DisplayId = fields[2].Get<uint32>();
+            petInfo.Level = fields[3].Get<uint16>();
+            petInfo.Experience = fields[4].Get<uint32>();
+            petInfo.ReactState = ReactStates(fields[5].Get<uint8>());
+            PetSaveMode slot = PetSaveMode(fields[6].Get<uint8>());
+            petInfo.Name = fields[7].Get<std::string>();
+            petInfo.WasRenamed = fields[8].Get<bool>();
+            petInfo.Health = fields[9].Get<uint32>();
+            petInfo.Mana = fields[10].Get<uint32>();
+            petInfo.Happiness = fields[11].Get<uint32>();
+            petInfo.ActionBar = fields[12].Get<std::string>();
+            petInfo.LastSaveTime = fields[13].Get<uint32>();
+            petInfo.CreatedBySpellId = fields[14].Get<uint32>();
+            petInfo.Type = PetType(fields[15].Get<uint8>());
 
             if (slot == PET_SAVE_AS_CURRENT)
                 m_petStable->CurrentPet = std::move(petInfo);
@@ -15220,136 +15465,6 @@ Guild* Player::GetGuild() const
 {
     uint32 guildId = GetGuildId();
     return guildId ? sGuildMgr->GetGuildById(guildId) : nullptr;
-}
-
-Pet* Player::SummonPet(uint32 entry, float x, float y, float z, float ang, PetType petType, Milliseconds duration /*= 0s*/)
-{
-    PetStable& petStable = GetOrInitPetStable();
-
-    Pet* pet = new Pet(this, petType);
-
-    if (petType == SUMMON_PET && pet->LoadPetFromDB(this, entry, 0, false))
-    {
-        // Remove Demonic Sacrifice auras (known pet)
-        Unit::AuraEffectList const& auraClassScripts = GetAuraEffectsByType(SPELL_AURA_OVERRIDE_CLASS_SCRIPTS);
-        for (Unit::AuraEffectList::const_iterator itr = auraClassScripts.begin(); itr != auraClassScripts.end();)
-        {
-            if ((*itr)->GetMiscValue() == 2228)
-            {
-                RemoveAurasDueToSpell((*itr)->GetId());
-                itr = auraClassScripts.begin();
-            }
-            else
-                ++itr;
-        }
-
-        if (duration > 0s)
-            pet->SetDuration(duration);
-
-        // Generate a new name for the newly summoned ghoul
-        if (pet->IsPetGhoul())
-        {
-            std::string new_name = sObjectMgr->GeneratePetName(entry);
-            if (!new_name.empty())
-                pet->SetName(new_name);
-        }
-
-        return nullptr;
-    }
-
-    // petentry == 0 for hunter "call pet" (current pet summoned if any)
-    if (!entry)
-    {
-        delete pet;
-        return nullptr;
-    }
-
-    pet->Relocate(x, y, z, ang);
-    if (!pet->IsPositionValid())
-    {
-        LOG_ERROR("misc", "Player::SummonPet: Pet ({}, Entry: {}) not summoned. Suggested coordinates aren't valid (X: {} Y: {})", pet->GetGUID().ToString(), pet->GetEntry(), pet->GetPositionX(), pet->GetPositionY());
-        delete pet;
-        return nullptr;
-    }
-
-    Map* map = GetMap();
-    uint32 pet_number = sObjectMgr->GeneratePetNumber();
-    if (!pet->Create(map->GenerateLowGuid<HighGuid::Pet>(), map, GetPhaseMask(), entry, pet_number))
-    {
-        LOG_ERROR("misc", "Player::SummonPet: No such creature entry {}", entry);
-        delete pet;
-        return nullptr;
-    }
-
-    if (petType == SUMMON_PET && petStable.CurrentPet)
-        RemovePet(nullptr, PET_SAVE_NOT_IN_SLOT);
-
-    pet->SetCreatorGUID(GetGUID());
-    pet->SetFaction(GetFaction());
-    pet->setPowerType(POWER_MANA);
-    pet->SetUInt32Value(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_NONE);
-    pet->SetUInt32Value(UNIT_FIELD_BYTES_1, 0);
-    pet->InitStatsForLevel(getLevel());
-
-    SetMinion(pet, true);
-
-    switch (petType)
-    {
-        case SUMMON_PET:
-        {
-            if (pet->GetCreatureTemplate()->type == CREATURE_TYPE_DEMON || pet->GetCreatureTemplate()->type == CREATURE_TYPE_UNDEAD)
-                pet->GetCharmInfo()->SetPetNumber(pet_number, true); // Show pet details tab (Shift+P) only for demons & undead
-            else
-                pet->GetCharmInfo()->SetPetNumber(pet_number, false);
-
-            pet->SetUInt32Value(UNIT_FIELD_BYTES_0, 2048);
-            pet->SetUInt32Value(UNIT_FIELD_PETEXPERIENCE, 0);
-            pet->SetUInt32Value(UNIT_FIELD_PETNEXTLEVELEXP, 1000);
-            pet->SetFullHealth();
-            pet->SetPower(POWER_MANA, pet->GetMaxPower(POWER_MANA));
-            pet->SetUInt32Value(UNIT_FIELD_PET_NAME_TIMESTAMP, uint32(time(nullptr))); // cast can't be helped in this case
-            break;
-        }
-        default:
-            break;
-    }
-
-    map->AddToMap(pet->ToCreature(), true);
-
-    ASSERT(!petStable.CurrentPet && (petType != HUNTER_PET || !petStable.GetUnslottedHunterPet()));
-    pet->FillPetInfo(&petStable.CurrentPet.emplace());
-
-    if (petType == SUMMON_PET)
-    {
-        pet->InitPetCreateSpells();
-        pet->InitTalentForLevel();
-        pet->SavePetToDB(PET_SAVE_AS_CURRENT);
-        PetSpellInitialize();
-
-        // Remove Demonic Sacrifice auras (known pet)
-        Unit::AuraEffectList const& auraClassScripts = GetAuraEffectsByType(SPELL_AURA_OVERRIDE_CLASS_SCRIPTS);
-        for (Unit::AuraEffectList::const_iterator itr = auraClassScripts.begin(); itr != auraClassScripts.end();)
-        {
-            if ((*itr)->GetMiscValue() == 2228)
-            {
-                RemoveAurasDueToSpell((*itr)->GetId());
-                itr = auraClassScripts.begin();
-            }
-            else
-                ++itr;
-        }
-    }
-
-    if (duration > 0s)
-        pet->SetDuration(duration);
-
-    if (NeedSendSpectatorData() && pet->GetCreatureTemplate()->family)
-    {
-        ArenaSpectator::SendCommand_UInt32Value(FindMap(), GetGUID(), "PHP", (uint32)pet->GetHealthPct());
-        ArenaSpectator::SendCommand_UInt32Value(FindMap(), GetGUID(), "PET", pet->GetCreatureTemplate()->family);
-    }
-
-    return pet;
 }
 
 uint32 Player::GetSpec(int8 spec)

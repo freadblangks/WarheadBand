@@ -192,8 +192,8 @@ public:
                 if (resultDB)
                 {
                     Field* fieldsDB = resultDB->Fetch();
-                    WorldLocation loc(fieldsDB[0].GetUInt16(), fieldsDB[2].GetFloat(), fieldsDB[3].GetFloat(), fieldsDB[4].GetFloat(), 0.0f);
-                    uint32 zoneId = fieldsDB[1].GetUInt16();
+                    WorldLocation loc(fieldsDB[0].Get<uint16>(), fieldsDB[2].Get<float>(), fieldsDB[3].Get<float>(), fieldsDB[4].Get<float>(), 0.0f);
+                    uint32 zoneId = fieldsDB[1].Get<uint16>();
 
                     Player::SavePositionInDB(loc, zoneId, player->GetGUID(), nullptr);
                 }
@@ -328,7 +328,7 @@ public:
         CreatureData const* spawnpoint = nullptr;
         for (auto const& pair : sObjectMgr->GetAllCreatureData())
         {
-            if (pair.second.id != *creatureId)
+            if (pair.second.id1 != *creatureId)
                 continue;
 
             if (!spawnpoint)
@@ -362,7 +362,7 @@ public:
             return false;
         }
 
-        CreatureTemplate const* creatureTemplate = ASSERT_NOTNULL(sObjectMgr->GetCreatureTemplate(spawnpoint->id));
+        CreatureTemplate const* creatureTemplate = ASSERT_NOTNULL(sObjectMgr->GetCreatureTemplate(spawnpoint->id1));
 
         return DoNameTeleport(handler, player, spawnpoint->mapid, { spawnpoint->posX, spawnpoint->posY, spawnpoint->posZ }, creatureTemplate->Name);
     }
@@ -372,7 +372,8 @@ public:
         std::string normalizedName(name);
         WorldDatabase.EscapeString(normalizedName);
 
-        QueryResult result = WorldDatabase.PQuery("SELECT c.position_x, c.position_y, c.position_z, c.orientation, c.map, ct.name FROM creature c INNER JOIN creature_template ct ON c.id = ct.entry WHERE ct.name LIKE '{}'", normalizedName);
+        // May need work //PussyWizardEliteMalcrom
+        QueryResult result = WorldDatabase.PQuery("SELECT c.position_x, c.position_y, c.position_z, c.orientation, c.map, ct.name FROM creature c INNER JOIN creature_template ct ON c.id1 = ct.entry WHERE ct.name LIKE '{}'", normalizedName);
         if (!result)
         {
             handler->SendSysMessage(LANG_COMMAND_GOCREATNOTFOUND);
@@ -384,7 +385,7 @@ public:
             handler->SendSysMessage(LANG_COMMAND_GOCREATMULTIPLE);
 
         Field* fields = result->Fetch();
-        return DoNameTeleport(handler, player, fields[4].GetUInt16(), { fields[0].GetFloat(), fields[1].GetFloat(), fields[2].GetFloat(), fields[3].GetFloat() }, fields[5].GetString());
+        return DoNameTeleport(handler, player, fields[4].Get<uint16>(), { fields[0].Get<float>(), fields[1].Get<float>(), fields[2].Get<float>(), fields[3].Get<float>() }, fields[5].Get<std::string>());
     }
 };
 

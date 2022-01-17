@@ -34,6 +34,7 @@
 #include "ChannelMgr.h"
 #include "CharacterDatabaseCleaner.h"
 #include "Chat.h"
+#include "ChatPackets.h"
 #include "Common.h"
 #include "ConditionMgr.h"
 #include "Config.h"
@@ -777,6 +778,9 @@ void World::SetInitialWorldSettings()
 
     LOG_INFO("server.loading", "Loading Creature Addon Data...");
     sObjectMgr->LoadCreatureAddons();                            // must be after LoadCreatureTemplates() and LoadCreatures()
+
+    LOG_INFO("server.loading", "Loading Creature Movement Overrides...");
+    sObjectMgr->LoadCreatureMovementOverrides(); // must be after LoadCreatures()
 
     LOG_INFO("server.loading", "Loading Gameobject Data...");
     sObjectMgr->LoadGameobjects();
@@ -1734,7 +1738,7 @@ void World::ShutdownMsg(bool show, Player* player, const std::string& reason)
 
         ServerMessageType msgid = (m_ShutdownMask & SHUTDOWN_MASK_RESTART) ? SERVER_MSG_RESTART_TIME : SERVER_MSG_SHUTDOWN_TIME;
 
-        SendServerMessage(msgid, str.c_str(), player);
+        SendServerMessage(msgid, str, player);
         LOG_DEBUG("server.worldserver", "Server is {} in {}", (m_ShutdownMask & SHUTDOWN_MASK_RESTART ? "restart" : "shuttingdown"), str);
     }
 }
@@ -1759,17 +1763,18 @@ void World::ShutdownCancel()
 }
 
 /// Send a server message to the user(s)
-void World::SendServerMessage(ServerMessageType type, std::string_view text, Player* player)
+void World::SendServerMessage(ServerMessageType messageID, std::string_view stringParam /*= {}*/, Player* player /*= nullptr*/)
 {
-    WorldPacket data(SMSG_SERVER_MESSAGE, 50);              // guess size
-    data << uint32(type);
-    if (type <= SERVER_MSG_STRING)
-        data << text;
+    WorldPackets::Chat::ChatServerMessage chatServerMessage;
+    chatServerMessage.MessageID = int32(messageID);
+
+    if (messageID <= SERVER_MSG_STRING)
+        chatServerMessage.StringParam = std::string(stringParam);
 
     if (player)
-        player->GetSession()->SendPacket(&data);
+        player->SendDirectMessage(chatServerMessage.Write());
     else
-        SendGlobalMessage(&data);
+        SendGlobalMessage(chatServerMessage.Write());
 }
 
 void World::UpdateSessions(uint32 diff)
@@ -1885,8 +1890,8 @@ void World::_UpdateRealmCharCount(PreparedQueryResult resultCharCount)
     if (resultCharCount)
     {
         Field* fields = resultCharCount->Fetch();
-        uint32 accountId = fields[0].GetUInt32();
-        uint8 charCount = uint8(fields[1].GetUInt64());
+        uint32 accountId = fields[0].Get<uint32>();
+        uint8 charCount = uint8(fields[1].Get<uint64>());
 
         LoginDatabaseTransaction trans = LoginDatabase.BeginTransaction();
 
@@ -2043,7 +2048,7 @@ void World::LoadDBAllowedSecurityLevel()
     PreparedQueryResult result = LoginDatabase.Query(stmt);
 
     if (result)
-        SetPlayerSecurityLimit(AccountTypes(result->Fetch()->GetUInt8()));
+        SetPlayerSecurityLimit(AccountTypes(result->Fetch()->Get<uint8>()));
 }
 
 void World::SetPlayerSecurityLimit(AccountTypes _sec)
@@ -2144,10 +2149,10 @@ void World::LoadDBVersion()
     {
         Field* fields = result->Fetch();
 
-        m_DBVersion = fields[0].GetString();
+        m_DBVersion = fields[0].Get<std::string>();
 
         // will be overwrite by config values if different and non-0
-        sGameConfig->AddOption<int32>("ClientCacheVersion", fields[1].GetUInt32());
+        sGameConfig->AddOption<int32>("ClientCacheVersion", fields[1].Get<uint32>());
     }
 
     if (m_DBVersion.empty())
@@ -2164,19 +2169,19 @@ void World::LoadDBRevision()
     {
         Field* fields = resultWorld->Fetch();
 
-        m_WorldDBRevision = fields[0].GetString();
+        m_WorldDBRevision = fields[0].Get<std::string>();
     }
     if (resultCharacter)
     {
         Field* fields = resultCharacter->Fetch();
 
-        m_CharacterDBRevision = fields[0].GetString();
+        m_CharacterDBRevision = fields[0].Get<std::string>();
     }
     if (resultAuth)
     {
         Field* fields = resultAuth->Fetch();
 
-        m_AuthDBRevision = fields[0].GetString();
+        m_AuthDBRevision = fields[0].Get<std::string>();
     }
 
     if (m_WorldDBRevision.empty())
@@ -2222,7 +2227,7 @@ void World::LoadWorldStates()
     do
     {
         Field* fields = result->Fetch();
-        m_worldstates[fields[0].GetUInt32()] = Seconds(fields[1].GetUInt32());
+        m_worldstates[fields[0].Get<uint32>()] = Seconds(fields[1].Get<uint32>());
         ++count;
     } while (result->NextRow());
 
