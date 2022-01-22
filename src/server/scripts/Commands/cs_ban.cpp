@@ -485,9 +485,7 @@ public:
                     Field* fields2 = banInfo->Fetch();
                     do
                     {
-                        time_t timeBan = time_t(fields2[0].Get<uint32>());
-                        tm tmBan;
-                        localtime_r(&timeBan, &tmBan);
+                        tm tmBan = Warhead::Time::TimeBreakdown(fields2[0].Get<uint32>());
 
                         if (fields2[0].Get<uint32>() == fields2[1].Get<uint32>())
                         {
@@ -497,9 +495,7 @@ public:
                         }
                         else
                         {
-                            time_t timeUnban = time_t(fields2[1].Get<uint32>());
-                            tm tmUnban;
-                            localtime_r(&timeUnban, &tmUnban);
+                            tm tmUnban = Warhead::Time::TimeBreakdown(fields2[1].Get<uint32>());
                             handler->PSendSysMessage("|%-15.15s|{:02}-{:02}-{:02} {:02}:{:02}|{:02}-{:02}-{:02} {:02}:{:02}|%-15.15s|%-15.15s|",
                                                      accountName, tmBan.tm_year % 100, tmBan.tm_mon + 1, tmBan.tm_mday, tmBan.tm_hour, tmBan.tm_min,
                                                      tmUnban.tm_year % 100, tmUnban.tm_mon + 1, tmUnban.tm_mday, tmUnban.tm_hour, tmUnban.tm_min,
@@ -574,9 +570,7 @@ public:
                     Field* banFields = banInfo->Fetch();
                     do
                     {
-                        time_t timeBan = time_t(banFields[0].Get<uint32>());
-                        tm tmBan;
-                        localtime_r(&timeBan, &tmBan);
+                        tm tmBan = Warhead::Time::TimeBreakdown(banFields[0].Get<uint32>());
 
                         if (banFields[0].Get<uint32>() == banFields[1].Get<uint32>())
                         {
@@ -586,9 +580,7 @@ public:
                         }
                         else
                         {
-                            time_t timeUnban = time_t(banFields[1].Get<uint32>());
-                            tm tmUnban;
-                            localtime_r(&timeUnban, &tmUnban);
+                            tm tmUnban = Warhead::Time::TimeBreakdown(banFields[1].Get<uint32>());
                             handler->PSendSysMessage("|%-15.15s|{:02}-{:02}-{:02} {:02}:{:02}|{:02}-{:02}-{:02} {:02}:{:02}|%-15.15s|%-15.15s|",
                                                      char_name, tmBan.tm_year % 100, tmBan.tm_mon + 1, tmBan.tm_mday, tmBan.tm_hour, tmBan.tm_min,
                                                      tmUnban.tm_year % 100, tmUnban.tm_mon + 1, tmUnban.tm_mday, tmUnban.tm_hour, tmUnban.tm_min,
@@ -652,9 +644,7 @@ public:
             {
                 handler->SendSysMessage("-------------------------------------------------------------------------------");
                 Field* fields = result->Fetch();
-                time_t timeBan = time_t(fields[1].Get<uint32>());
-                tm tmBan;
-                localtime_r(&timeBan, &tmBan);
+                tm tmBan = Warhead::Time::TimeBreakdown(fields[1].Get<uint32>());
                 if (fields[1].Get<uint32>() == fields[2].Get<uint32>())
                 {
                     handler->PSendSysMessage("|%-15.15s|{:02}-{:02}-{:02} {:02}:{:02}|   permanent  |%-15.15s|%-15.15s|",
@@ -663,9 +653,7 @@ public:
                 }
                 else
                 {
-                    time_t timeUnban = time_t(fields[2].Get<uint32>());
-                    tm tmUnban;
-                    localtime_r(&timeUnban, &tmUnban);
+                    tm tmUnban = Warhead::Time::TimeBreakdown(fields[2].Get<uint32>());
                     handler->PSendSysMessage("|%-15.15s|{:02}-{:02}-{:02} {:02}:{:02}|{:02}-{:02}-{:02} {:02}:{:02}|%-15.15s|%-15.15s|",
                                              fields[0].Get<std::string_view>(), tmBan.tm_year % 100, tmBan.tm_mon + 1, tmBan.tm_mday, tmBan.tm_hour, tmBan.tm_min,
                                              tmUnban.tm_year % 100, tmUnban.tm_mon + 1, tmUnban.tm_mday, tmUnban.tm_hour, tmUnban.tm_min,

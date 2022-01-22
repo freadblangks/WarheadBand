@@ -51,32 +51,94 @@ namespace
     inline bool IsCorrectFieldType(DatabaseFieldTypes type)
     {
         // Int8
-        if ((std::is_same_v<T, bool> || std::is_same_v<T, int8> || std::is_same_v<T, uint8>) && type == DatabaseFieldTypes::Int8)
-            return true;
+        if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int8> || std::is_same_v<T, uint8>)
+        {
+            if (type == DatabaseFieldTypes::Int8)
+                return true;
+        }
 
         // In16
-        if ((std::is_same_v<T, uint16> || std::is_same_v<T, int16>) && type == DatabaseFieldTypes::Int16)
-            return true;
+        if constexpr (std::is_same_v<T, uint16> || std::is_same_v<T, int16>)
+        {
+            if (type == DatabaseFieldTypes::Int16)
+                return true;
+        }
 
         // Int32
-        if ((std::is_same_v<T, uint32> || std::is_same_v<T, int32>) && type == DatabaseFieldTypes::Int32)
-            return true;
+        if constexpr (std::is_same_v<T, uint32> || std::is_same_v<T, int32>)
+        {
+            if (type == DatabaseFieldTypes::Int32)
+                return true;
+        }
 
         // Int64
-        if ((std::is_same_v<T, uint64> || std::is_same_v<T, int64>) && type == DatabaseFieldTypes::Int64)
-            return true;
+        if constexpr (std::is_same_v<T, uint64> || std::is_same_v<T, int64>)
+        {
+            if (type == DatabaseFieldTypes::Int64)
+                return true;
+        }
 
         // float
-        if (std::is_same_v<T, float> && type == DatabaseFieldTypes::Float)
-            return true;
+        if constexpr (std::is_same_v<T, float>)
+        {
+            if (type == DatabaseFieldTypes::Float)
+                return true;
+        }
 
         // dobule
-        if (std::is_same_v<T, double> && (type == DatabaseFieldTypes::Double || type == DatabaseFieldTypes::Decimal))
-            return true;
+        if constexpr (std::is_same_v<T, double>)
+        {
+            if (type == DatabaseFieldTypes::Double || type == DatabaseFieldTypes::Decimal)
+                return true;
+        }
 
         // Binary
-        if (std::is_same_v<T, Binary> && type == DatabaseFieldTypes::Binary)
+        if constexpr (std::is_same_v<T, Binary>)
+        {
+            if (type == DatabaseFieldTypes::Binary)
+                return true;
+        }
+
+        return false;
+    }
+
+    inline Optional<std::string_view> GetCleanAliasName(std::string_view alias)
+    {
+        if (alias.empty())
+            return {};
+
+        auto pos = alias.find_first_of('(');
+        if (pos == std::string_view::npos)
+            return {};
+
+        alias.remove_suffix(alias.length() - pos);
+
+        return { alias };
+    }
+
+    template<typename T>
+    inline bool IsCorrectAlias(DatabaseFieldTypes type, std::string_view alias)
+    {
+        if constexpr (std::is_same_v<T, double>)
+        {
+            if ((StringEqualI(alias, "sum") || StringEqualI(alias, "avg")) && type == DatabaseFieldTypes::Decimal)
+                return true;
+
+            return false;
+        }
+
+        if constexpr (std::is_same_v<T, uint64>)
+        {
+            if (StringEqualI(alias, "count") && type == DatabaseFieldTypes::Int64)
+                return true;
+
+            return false;
+        }
+
+        if ((StringEqualI(alias, "min") || StringEqualI(alias, "max")) && IsCorrectFieldType<T>(type))
+        {
             return true;
+        }
 
         return false;
     }
@@ -119,10 +181,10 @@ bool Field::IsNumeric() const
         meta->Type == DatabaseFieldTypes::Double);
 }
 
-void Field::LogWrongType(char const* getter) const
+void Field::LogWrongType(std::string_view getter, std::string_view typeName) const
 {
-    LOG_WARN("sql.sql", "Warning: {} on {} field {}.{} ({}.{}) at index {}.",
-        getter, meta->TypeName, meta->TableAlias, meta->Alias, meta->TableName, meta->Name, meta->Index);
+    LOG_WARN("sql.sql", "Warning: {}<{}> on {} field {}.{} ({}.{}) at index {}.",
+        getter, typeName, meta->TypeName, meta->TableAlias, meta->Alias, meta->TableName, meta->Name, meta->Index);
 }
 
 void Field::SetMetadata(QueryResultFieldMetadata const* fieldMeta)
@@ -139,9 +201,9 @@ T Field::GetData() const
         return GetDefaultValue<T>();
 
 #ifdef WARHEAD_STRICT_DATABASE_TYPE_CHECKS
-    if (!IsCorrectFieldType<T>(meta->Type, data.raw))
+    if (!IsCorrectFieldType<T>(meta->Type))
     {
-        LogWrongType(__FUNCTION__);
+        LogWrongType(__FUNCTION__, typeid(T).name());
         //return GetDefaultValue<T>();
     }
 #endif
@@ -153,16 +215,63 @@ T Field::GetData() const
     else
         result = Warhead::StringTo<T>(data.value);
 
-    // For dbc db loader
-    if (!data.raw && !result && std::is_same_v<T, uint32>)
+    // Correct double fields... this undefined behavior :/
+    if constexpr (std::is_same_v<T, double>)
     {
-        result = std::numeric_limits<T>::max();
+        if (data.raw && !IsType(DatabaseFieldTypes::Decimal))
+            result = *reinterpret_cast<double const*>(data.value);
+        else
+            result = Warhead::StringTo<float>(data.value);
+    }
+
+    // Check -1 for *_dbc db tables
+    if constexpr (std::is_same_v<T, uint32>)
+    {
+        std::string_view tableName{ meta->TableName };
+
+        if (!tableName.empty() && tableName.size() > 4)
+        {
+            auto signedResult = Warhead::StringTo<int32>(data.value);
+
+            if (signedResult && !result && tableName.substr(tableName.length() - 4) == "_dbc")
+            {
+                LOG_DEBUG("sql.sql", "> Found incorrect value '{}' for type '{}' in _dbc table.", data.value, typeid(T).name());
+                LOG_DEBUG("sql.sql", "> Table name '{}'. Field name '{}'. Try return int32 value", meta->TableName, meta->Name);
+                return GetData<int32>();
+            }
+        }
+    }
+
+    if (auto alias = GetCleanAliasName(meta->Alias))
+    {
+        if ((StringEqualI(*alias, "min") || StringEqualI(*alias, "max")) && !IsCorrectAlias<T>(meta->Type, *alias))
+        {
+            LogWrongType(__FUNCTION__, typeid(T).name());
+            //ABORT();
+        }
+
+        if ((StringEqualI(*alias, "sum") || StringEqualI(*alias, "avg")) && !IsCorrectAlias<T>(meta->Type, *alias))
+        {
+            LogWrongType(__FUNCTION__, typeid(T).name());
+            LOG_WARN("sql.sql", "> Please use GetData<double>()");
+            return GetData<double>();
+            //ABORT();
+        }
+
+        if (StringEqualI(*alias, "count") && !IsCorrectAlias<T>(meta->Type, *alias))
+        {
+            LogWrongType(__FUNCTION__, typeid(T).name());
+            LOG_WARN("sql.sql", "> Please use GetData<uint64>()");
+            return GetData<uint64>();
+            //ABORT();
+        }
     }
 
     if (!result)
     {
         LOG_FATAL("sql.sql", "> Incorrect value '{}' for type '{}'. Value is raw ? '{}'", data.value, typeid(T).name(), data.raw);
-        LOG_FATAL("sql.sql", "> Field name '{}'. Table name '{}'", meta->Name, meta->TableName);
+        LOG_FATAL("sql.sql", "> Table name '{}'. Field name '{}'", meta->TableName, meta->Name);
+        //ABORT();
         return GetDefaultValue<T>();
     }
 
@@ -189,7 +298,7 @@ std::string Field::GetDataString() const
 #ifdef WARHEAD_STRICT_DATABASE_TYPE_CHECKS
     if (IsNumeric() && data.raw)
     {
-        LogWrongType(__FUNCTION__);
+        LogWrongType(__FUNCTION__, "std::string");
         return "";
     }
 #endif
@@ -205,7 +314,7 @@ std::string_view Field::GetDataStringView() const
 #ifdef WARHEAD_STRICT_DATABASE_TYPE_CHECKS
     if (IsNumeric() && data.raw)
     {
-        LogWrongType(__FUNCTION__);
+        LogWrongType(__FUNCTION__, "std::string_view");
         return {};
     }
 #endif
@@ -218,6 +327,14 @@ Binary Field::GetDataBinary() const
     Binary result = {};
     if (!data.value || !data.length)
         return result;
+
+#ifdef WARHEAD_STRICT_DATABASE_TYPE_CHECKS
+    if (!IsCorrectFieldType<Binary>(meta->Type))
+    {
+        LogWrongType(__FUNCTION__, "Binary");
+        return {};
+    }
+#endif
 
     result.resize(data.length);
     memcpy(result.data(), data.value, data.length);

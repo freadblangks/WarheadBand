@@ -271,8 +271,8 @@ public:
 
         uint32 accountId = handler->GetSession()->GetAccountId();
 
-        int expansion = atoi(exp); //get int anyway (0 if error)
-        if (expansion < 0 || uint8(expansion) > CONF_GET_INT("Expansion"))
+        auto expansion = Warhead::StringTo<uint8>(exp); //get int anyway (0 if error)
+        if (!expansion || *expansion > CONF_GET_INT("Expansion"))
         {
             handler->SendSysMessage(LANG_IMPROPER_VALUE);
             handler->SetSentErrorMessage(true);
@@ -281,12 +281,12 @@ public:
 
         LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_UPD_EXPANSION);
 
-        stmt->SetData(0, uint8(expansion));
+        stmt->SetData(0, *expansion);
         stmt->SetData(1, accountId);
 
         LoginDatabase.Execute(stmt);
 
-        handler->PSendSysMessage(LANG_ACCOUNT_ADDON, expansion);
+        handler->PSendSysMessage(LANG_ACCOUNT_ADDON, *expansion);
         return true;
     }
 
@@ -764,18 +764,18 @@ public:
                 handler->HasLowerSecurityAccount(nullptr, accountId, true))
             return false;
 
-        int expansion = atoi(exp); //get int anyway (0 if error)
-        if (expansion < 0 || uint8(expansion) > CONF_GET_INT("Expansion"))
+        auto expansion = Warhead::StringTo<uint8>(exp); //get int anyway (0 if error)
+        if (!expansion || *expansion > CONF_GET_INT("Expansion"))
             return false;
 
         LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_UPD_EXPANSION);
 
-        stmt->SetData(0, expansion);
+        stmt->SetData(0, *expansion);
         stmt->SetData(1, accountId);
 
         LoginDatabase.Execute(stmt);
 
-        handler->PSendSysMessage(LANG_ACCOUNT_SETADDON, accountName, accountId, expansion);
+        handler->PSendSysMessage(LANG_ACCOUNT_SETADDON, accountName, accountId, *expansion);
         return true;
     }
 
@@ -817,7 +817,7 @@ public:
         }
 
         // Check for invalid specified GM level.
-        gm = (isAccountNameGiven) ? atoi(arg2) : atoi(arg1);
+        gm = (isAccountNameGiven) ? Warhead::StringTo<int32>(arg2).value_or(0) : Warhead::StringTo<int32>(arg1).value_or(0);
         if (gm > SEC_CONSOLE)
         {
             handler->SendSysMessage(LANG_BAD_VALUE);
@@ -827,7 +827,7 @@ public:
 
         // handler->getSession() == nullptr only for console
         targetAccountId = (isAccountNameGiven) ? AccountMgr::GetId(targetAccountName) : handler->getSelectedPlayer()->GetSession()->GetAccountId();
-        int32 gmRealmID = (isAccountNameGiven) ? atoi(arg3) : atoi(arg2);
+        int32 gmRealmID = (isAccountNameGiven) ? Warhead::StringTo<int32>(arg3).value_or(0) : Warhead::StringTo<int32>(arg2).value_or(0);
         uint32 playerSecurity;
         if (handler->GetSession())
             playerSecurity = AccountMgr::GetSecurity(handler->GetSession()->GetAccountId(), gmRealmID);

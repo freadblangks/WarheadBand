@@ -26,8 +26,9 @@
 #include "StringFormat.h"
 #include "UpdateFields.h"
 #include "World.h"
+#include "StringConvert.h"
 
-#define DUMP_TABLE_COUNT 27
+constexpr auto DUMP_TABLE_COUNT = 27;
 
 struct DumpTable
 {
@@ -176,10 +177,11 @@ uint32 registerNewGuid(uint32 oldGuid, std::map<uint32, uint32>& guidMap, uint32
 
 bool changeGuid(std::string& str, int n, std::map<uint32, uint32>& guidMap, uint32 hiGuid, bool nonzero = false)
 {
-    uint32 oldGuid = *Warhead::StringTo<uint32>(getnth(str, n));
-    if (nonzero && !oldGuid)
+    auto _oldGuid = Warhead::StringTo<uint32>(getnth(str, n));
+    if (nonzero && (!_oldGuid || !*_oldGuid))
         return true; // not an error
 
+    uint32 oldGuid = *_oldGuid;
     uint32 newGuid = registerNewGuid(oldGuid, guidMap, hiGuid);
 
     return changenth(str, n, Warhead::StringFormat("{}", newGuid), false, nonzero);
@@ -187,10 +189,11 @@ bool changeGuid(std::string& str, int n, std::map<uint32, uint32>& guidMap, uint
 
 bool changetokGuid(std::string& str, int n, std::map<uint32, uint32>& guidMap, uint32 hiGuid, bool nonzero = false)
 {
-    uint32 oldGuid = *Warhead::StringTo<uint32>(gettoknth(str, n));
-    if (nonzero && !oldGuid)
+    auto _oldGuid = Warhead::StringTo<uint32>(gettoknth(str, n));
+    if (nonzero && (!_oldGuid || !*_oldGuid))
         return true; // not an error
 
+    uint32 oldGuid = *_oldGuid;
     uint32 newGuid = registerNewGuid(oldGuid, guidMap, hiGuid);
 
     return changetoknth(str, n, Warhead::StringFormat("{}", newGuid), false, nonzero);
@@ -258,9 +261,11 @@ void StoreGUID(QueryResult result, uint32 data, uint32 field, std::set<uint32>& 
 {
     Field* fields = result->Fetch();
     std::string dataStr = fields[data].Get<std::string>();
-    uint32 guid = atoi(gettoknth(dataStr, field).c_str());
-    if (guid)
-        guids.insert(guid);
+
+    if (auto guid = Warhead::StringTo<uint32>(gettoknth(dataStr, field)))
+    {
+        guids.insert(*guid);
+    }
 }
 
 // Writing - High-level functions
@@ -342,7 +347,7 @@ bool PlayerDumpWriter::DumpTable(std::string& dump, uint32 guid, char const* tab
                         if (result->GetFieldCount() <= 74)          // avoid crashes on next check
                             LOG_FATAL("entities.player.dump", "PlayerDumpWriter::DumpTable - Trying to access non-existing or wrong positioned field (`deleteInfos_Account`) in `characters` table.");
 
-                        if (result->Fetch()[74].Get<uint32>())        // characters.deleteInfos_Account - if filled error
+                        if (result->Fetch()[74].Get<std::string_view>().empty()) // characters.deleteInfos_Account - if filled error
                             return false;
                         break;
                     }
@@ -651,10 +656,12 @@ DumpReturn PlayerDumpReader::LoadDump(const std::string& file, uint32 account, s
                         lastpetid = Warhead::StringFormat("{}", currpetid);
                     }
 
-                    auto const& petids_iter = petids.find(*Warhead::StringTo<uint32>(currpetid));
+                    auto const& petids_iter = petids.find(Warhead::StringTo<uint32>(currpetid).value_or(0));
 
                     if (petids_iter == petids.end())
-                        petids.emplace(*Warhead::StringTo<uint32>(currpetid), *Warhead::StringTo<uint32>(newpetid));
+                    {
+                        petids.emplace(Warhead::StringTo<uint32>(currpetid).value_or(0), Warhead::StringTo<uint32>(newpetid).value_or(0));
+                    }
 
                     if (!changenth(line, 1, newpetid))          // character_pet.id update
                         ROLLBACK(DUMP_FILE_BROKEN);
@@ -668,7 +675,7 @@ DumpReturn PlayerDumpReader::LoadDump(const std::string& file, uint32 account, s
                     std::string currpetid = Warhead::StringFormat("{}", getnth(line, 1));
 
                     // lookup currpetid and match to new inserted pet id
-                    auto const& petids_iter = petids.find(*Warhead::StringTo<uint32>(currpetid));
+                    std::map<uint32, uint32> :: const_iterator petids_iter = petids.find(Warhead::StringTo<uint32>(currpetid).value_or(0));
                     if (petids_iter == petids.end())             // couldn't find new inserted id
                         ROLLBACK(DUMP_FILE_BROKEN);
 

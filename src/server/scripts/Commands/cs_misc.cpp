@@ -2239,7 +2239,7 @@ public:
         if (mailInfoResult)
         {
             Field* fields         = mailInfoResult->Fetch();
-            uint32 readmail       = uint32(fields[0].Get<uint64>());
+            uint32 readmail       = uint32(fields[0].Get<double>());
             uint32 totalmail      = uint32(fields[1].Get<uint64>());
 
             // Output XXI. LANG_INFO_CHR_MAILS if at least one mail is given
@@ -2413,17 +2413,7 @@ public:
         do
         {
             Field* fields = result->Fetch();
-
-            // we have to manually set the string for mutedate
-            time_t sqlTime = fields[0].Get<uint32>();
-            tm timeInfo;
-            char buffer[80];
-
-            // set it to string
-            localtime_r(&sqlTime, &timeInfo);
-            strftime(buffer, sizeof(buffer), "%Y-%m-%d %I:%M%p", &timeInfo);
-
-            handler->PSendSysMessage(LANG_COMMAND_MUTEHISTORY_OUTPUT, buffer, fields[1].Get<uint32>(), fields[2].Get<std::string_view>(), fields[3].Get<std::string_view>());
+            handler->PSendSysMessage(LANG_COMMAND_MUTEHISTORY_OUTPUT, Warhead::Time::TimeToHumanReadable(fields[0].Get<Seconds>()), fields[1].Get<uint32>(), fields[2].Get<std::string_view>(), fields[3].Get<std::string_view>());
         } while (result->NextRow());
 
         return true;
@@ -2830,7 +2820,7 @@ public:
 
         if (!strcmp(str, "<error>"))
         {
-            handler->PSendSysMessage(LANG_NO_ACORE_STRING_FOUND, id);
+            handler->PSendSysMessage(LANG_NO_WARHEAD_STRING_FOUND, id);
             return true;
         }
         else
