@@ -18,11 +18,10 @@
 #include "ServerMotd.h"
 #include "Opcodes.h"
 #include "ScriptMgr.h"
+#include "Tokenize.h"
 #include "Util.h"
 #include "WorldPacket.h"
-#include "Tokenize.h"
 #include <iterator>
-#include <sstream>
 
 namespace
 {

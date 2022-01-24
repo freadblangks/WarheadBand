@@ -43,15 +43,14 @@
 #include "SpellAuras.h"
 #include "SpellMgr.h"
 #include "SpellScript.h"
+#include "StringConvert.h"
+#include "Tokenize.h"
 #include "Transport.h"
 #include "Unit.h"
 #include "UpdateMask.h"
 #include "Util.h"
 #include "Vehicle.h"
-#include "WaypointMgr.h"
 #include "World.h"
-#include "StringConvert.h"
-#include "Tokenize.h"
 
 ScriptMapMap sSpellScripts;
 ScriptMapMap sEventScripts;

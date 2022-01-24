@@ -21,7 +21,6 @@
 #include "CellImpl.h"
 #include "Chat.h"
 #include "Creature.h"
-#include "DynamicTree.h"
 #include "DynamicVisibility.h"
 #include "GameConfig.h"
 #include "GameLocale.h"
@@ -40,8 +39,10 @@
 #include "ScriptMgr.h"
 #include "SharedDefines.h"
 #include "SpellAuraEffects.h"
+#include "StringConvert.h"
 #include "TargetedMovementGenerator.h"
 #include "TemporarySummon.h"
+#include "Tokenize.h"
 #include "Totem.h"
 #include "Transport.h"
 #include "UpdateData.h"
@@ -52,8 +53,6 @@
 #include "Vehicle.h"
 #include "World.h"
 #include "WorldPacket.h"
-#include "Tokenize.h"
-#include "StringConvert.h"
 
 // TODO: this import is not necessary for compilation and marked as unused by the IDE
 //  however, for some reasons removing it would cause a damn linking issue
@@ -3070,13 +3069,13 @@ void WorldObject::AddToNotify(uint16 f)
             {
                 uint32 EVENT_VISIBILITY_DELAY = u->FindMap() ? DynamicVisibilityMgr::GetVisibilityNotifyDelay(u->FindMap()->GetEntry()->map_type) : 1000;
 
-                uint32 diff = getMSTimeDiff(u->m_last_notify_mstime, getMSTime());
+                uint32 diff = getMSTimeDiff(u->m_last_notify_mstime, GameTime::GetGameTimeMS().count());
                 if (diff >= EVENT_VISIBILITY_DELAY / 2)
                     EVENT_VISIBILITY_DELAY /= 2;
                 else
                     EVENT_VISIBILITY_DELAY -= diff;
                 u->m_delayed_unit_relocation_timer = EVENT_VISIBILITY_DELAY;
-                u->m_last_notify_mstime = getMSTime() + EVENT_VISIBILITY_DELAY - 1;
+                u->m_last_notify_mstime = GameTime::GetGameTimeMS().count() + EVENT_VISIBILITY_DELAY - 1;
             }
             else if (f & NOTIFY_AI_RELOCATION)
             {
