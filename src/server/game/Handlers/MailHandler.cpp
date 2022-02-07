@@ -133,7 +133,7 @@ void WorldSession::HandleSendMail(WorldPacket& recvData)
     if (!receiverGuid)
     {
         LOG_DEBUG("network.opcode", "Player {} is sending mail to {} (GUID: not existed!) with subject {} and body {} includes {} items, {} copper and {} COD copper with unk1 = {}, unk2 = {}",
-            player->GetGUID(), receiver, subject, body, items_count, money, COD, unk1, unk2);
+            player->GetGUID().ToString(), receiver, subject, body, items_count, money, COD, unk1, unk2);
         player->SendMailResult(0, MAIL_SEND, MAIL_ERR_RECIPIENT_NOT_FOUND);
         return;
     }
@@ -316,7 +316,7 @@ void WorldSession::HandleSendMail(WorldPacket& recvData)
         if( money >= 10 * GOLD )
         {
             CleanStringForMysqlQuery(subject);
-            CharacterDatabase.PExecute("INSERT INTO log_money VALUES({}, {}, \"{}\", \"{}\", {}, \"{}\", {}, \"<MAIL> {}\", NOW())",
+            CharacterDatabase.Execute("INSERT INTO log_money VALUES({}, {}, \"{}\", \"{}\", {}, \"{}\", {}, \"<MAIL> {}\", NOW())",
                 GetAccountId(), player->GetGUID().GetCounter(), player->GetName(), player->GetSession()->GetRemoteAddress(), rc_account, receiver, money, subject);
         }
     }
@@ -535,7 +535,7 @@ void WorldSession::HandleMailTakeItem(WorldPacket& recvData)
                     }
                     std::string subj = m->subject;
                     CleanStringForMysqlQuery(subj);
-                    CharacterDatabase.PExecute("INSERT INTO log_money VALUES({}, {}, \"{}\", \"{}\", {}, \"{}\", {}, \"<COD> {}\", NOW())",
+                    CharacterDatabase.Execute("INSERT INTO log_money VALUES({}, {}, \"{}\", \"{}\", {}, \"{}\", {}, \"<COD> {}\", NOW())",
                         GetAccountId(), player->GetGUID().GetCounter(), player->GetName(), player->GetSession()->GetRemoteAddress(), sender_accId, senderName, m->COD, subj);
                 }
             }

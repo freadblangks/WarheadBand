@@ -71,6 +71,7 @@
 #include "OutdoorPvPMgr.h"
 #include "PetitionMgr.h"
 #include "Player.h"
+#include "PlayerDump.h"
 #include "PoolMgr.h"
 #include "Realm.h"
 #include "ScriptMgr.h"
@@ -616,7 +617,7 @@ void World::SetInitialWorldSettings()
 
     uint32 realm_zone = CONF_GET_INT("RealmZone");
 
-    LoginDatabase.PExecute("UPDATE realmlist SET icon = {}, timezone = {} WHERE id = '{}'", server_type, realm_zone, realm.Id.Realm);      // One-time query
+    LoginDatabase.Execute("UPDATE realmlist SET icon = {}, timezone = {} WHERE id = '{}'", server_type, realm_zone, realm.Id.Realm);      // One-time query
 
     ///- Custom Hook for loading DB items
     sScriptMgr->OnLoadCustomDatabaseTable();
@@ -645,6 +646,9 @@ void World::SetInitialWorldSettings()
 
     LOG_INFO("server.loading", "Loading spell dbc data corrections...");
     sSpellMgr->LoadDbcDataCorrections();
+
+    LOG_INFO("server.loading", "Initializing PlayerDump tables...");
+    PlayerDump::InitializeTables();
 
     LOG_INFO("server.loading", "Loading SpellInfo store...");
     sSpellMgr->LoadSpellInfoStore();
@@ -1061,7 +1065,7 @@ void World::SetInitialWorldSettings()
     LOG_INFO("server", " ");
     GameTime::UpdateGameTimers();
 
-    LoginDatabase.PExecute("INSERT INTO uptime (realmid, starttime, uptime, revision) VALUES({}, {}, 0, '{}')",
+    LoginDatabase.Execute("INSERT INTO uptime (realmid, starttime, uptime, revision) VALUES({}, {}, 0, '{}')",
                            realm.Id.Realm, uint32(GameTime::GetStartTime().count()), GitRevision::GetFullVersion()); // One-time query
 
     m_timers[WUPDATE_WEATHERS].SetInterval(1 * IN_MILLISECONDS);

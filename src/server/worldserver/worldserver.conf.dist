@@ -336,9 +336,9 @@ SessionAddDelay = 10000
 #
 #    MapUpdateInterval
 #        Description: Time (milliseconds) for map update interval.
-#        Default:     100 - (0.1 second)
+#        Default:     100 - (0.01 second)
 
-MapUpdateInterval = 100
+MapUpdateInterval = 10
 
 #
 #    ChangeWeatherInterval
@@ -3613,6 +3613,14 @@ LFG.MaxKickCount = 2
 #                     0 - Disabled
 
 LFG.KickPreventionTimer = 900
+
+#
+#     JoinBGAndLFG.Enable
+#        Description: Allow queueing for BG and LFG at the same time.
+#        Default:     0 - Disabled
+#                     1 - Enabled
+
+JoinBGAndLFG.Enable = 0
 
 #
 ###################################################################################################

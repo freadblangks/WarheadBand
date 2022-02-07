@@ -203,8 +203,8 @@ void WorldSession::HandlePetitionBuyOpcode(WorldPacket& recvData)
     {
         LOG_DEBUG("network", "Invalid petition: {}", petition->petitionGuid.ToString());
 
-        trans->PAppend("DELETE FROM petition WHERE petitionguid = {}", petition->petitionGuid.GetCounter());
-        trans->PAppend("DELETE FROM petition_sign WHERE petitionguid = {}", petition->petitionGuid.GetCounter());
+        trans->Append("DELETE FROM petition WHERE petitionguid = {}", petition->petitionGuid.GetCounter());
+        trans->Append("DELETE FROM petition_sign WHERE petitionguid = {}", petition->petitionGuid.GetCounter());
 
         // xinef: clear petition store
         sPetitionMgr->RemovePetition(petition->petitionGuid);
@@ -656,7 +656,7 @@ void WorldSession::HandleTurnInPetitionOpcode(WorldPacket& recvData)
     if (!petition)
     {
         LOG_ERROR("network.opcode", "Player {} ({}) tried to turn in petition ({}) that is not present in the database",
-            _player->GetName(), _player->GetGUID(), petitionGuid);
+            _player->GetName(), _player->GetGUID().ToString(), petitionGuid.ToString());
         return;
     }
 

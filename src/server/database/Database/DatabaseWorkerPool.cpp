@@ -39,7 +39,7 @@
 #endif
 
 #if MARIADB_VERSION_ID >= 100600
-#define MIN_MYSQL_SERVER_VERSION 100500u
+#define MIN_MYSQL_SERVER_VERSION 100300u
 #define MIN_MYSQL_CLIENT_VERSION 30203u
 #else
 #define MIN_MYSQL_SERVER_VERSION 50700u
@@ -72,7 +72,7 @@ DatabaseWorkerPool<T>::DatabaseWorkerPool() :
     bool isSameClientDB    = true; // Client version 3.2.3?
 #endif
 
-    WPFatal(isSupportClientDB, "WarheadCore does not support MySQL versions below 5.7 and MariaDB 10.5\nSearch the wiki for ACE00043 in Common Errors (https://www.azerothcore.org/wiki/common-errors).");
+    WPFatal(isSupportClientDB, "WarheadCore does not support MySQL versions below 5.7 and MariaDB 10.3\nSearch the wiki for ACE00043 in Common Errors (https://www.azerothcore.org/wiki/common-errors).");
     WPFatal(isSameClientDB, "Used MySQL library version ({} id {}) does not match the version id used to compile WarheadCore (id {}).\nSearch the wiki for ACE00046 in Common Errors (https://www.azerothcore.org/wiki/common-errors).",
         mysql_get_client_info(), mysql_get_client_version(), MYSQL_VERSION_ID);
 }
@@ -183,10 +183,9 @@ bool DatabaseWorkerPool<T>::PrepareStatements()
 }
 
 template <class T>
-QueryResult DatabaseWorkerPool<T>::Query(std::string_view sql, T* connection /*= nullptr*/)
+QueryResult DatabaseWorkerPool<T>::Query(std::string_view sql)
 {
-    if (!connection)
-        connection = GetFreeConnection();
+    auto connection = GetFreeConnection();
 
     ResultSet* result = connection->Query(sql);
     connection->Unlock();
@@ -403,7 +402,7 @@ uint32 DatabaseWorkerPool<T>::OpenConnections(InternalIndex type, uint8 numConne
         }
         else if (connection->GetServerVersion() < MIN_MYSQL_SERVER_VERSION)
         {
-            LOG_ERROR("sql.driver", "WarheadCore does not support MySQL versions below 5.7 or MariaDB versions below 10.5");
+            LOG_ERROR("sql.driver", "WarheadCore does not support MySQL versions below 5.7 or MariaDB versions below 10.3");
             return 1;
         }
         else
