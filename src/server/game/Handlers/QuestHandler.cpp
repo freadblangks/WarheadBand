@@ -17,6 +17,7 @@
 
 #include "Battleground.h"
 #include "BattlegroundAV.h"
+#include "ChatTextBuilder.h"
 #include "GameConfig.h"
 #include "GameObjectAI.h"
 #include "Group.h"
@@ -135,7 +136,7 @@ void WorldSession::HandleQuestgiverAcceptQuestOpcode(WorldPacket& recvData)
         // pussywizard: exploit fix, can't share quests that give items to be sold
         if (object->GetTypeId() == TYPEID_PLAYER)
             if (uint32 itemId = quest->GetSrcItemId())
-                if (const ItemTemplate* srcItem = sObjectMgr->GetItemTemplate(itemId))
+                if (ItemTemplate const* srcItem = sObjectMgr->GetItemTemplate(itemId))
                     if (srcItem->SellPrice > 0)
                         return;
 
@@ -471,7 +472,7 @@ void WorldSession::HandleQuestConfirmAccept(WorldPacket& recvData)
 
         // pussywizard: exploit fix, can't share quests that give items to be sold
         if (uint32 itemId = quest->GetSrcItemId())
-            if (const ItemTemplate* srcItem = sObjectMgr->GetItemTemplate(itemId))
+            if (ItemTemplate const* srcItem = sObjectMgr->GetItemTemplate(itemId))
                 if (srcItem->SellPrice > 0)
                     return;
 
@@ -585,7 +586,7 @@ void WorldSession::HandlePushQuestToParty(WorldPacket& recvPacket)
                     // Check if player is in BG
                     if (_player->InBattleground())
                     {
-                        _player->GetSession()->SendNotification(LANG_BG_SHARE_QUEST_ERROR);
+                        Warhead::Text::SendNotification(this, LANG_BG_SHARE_QUEST_ERROR);
                         continue;
                     }
                 }

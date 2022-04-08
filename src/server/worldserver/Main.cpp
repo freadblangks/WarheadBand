@@ -32,6 +32,7 @@
 #include "Logo.h"
 #include "MapMgr.h"
 #include "Metric.h"
+#include "ModuleMgr.h"
 #include "ModulesScriptLoader.h"
 #include "MySQLThreading.h"
 #include "OpenSSLCrypto.h"
@@ -53,8 +54,6 @@
 #include <csignal>
 #include <openssl/crypto.h>
 #include <openssl/opensslv.h>
-#include "ModuleMgr.h"
-#include "Discord.h"
 
 #if WARHEAD_PLATFORM == WARHEAD_PLATFORM_WINDOWS
 #include "ServiceWin32.h"
@@ -151,7 +150,7 @@ int main(int argc, char** argv)
                 configFile = argv[c];
         }
 
-#ifdef _WIN32
+#if WARHEAD_PLATFORM == WARHEAD_PLATFORM_WINDOWS
         if (strcmp(argv[c], "-s") == 0) // Services
         {
             if (++c >= argc)
@@ -183,47 +182,50 @@ int main(int argc, char** argv)
 
         if (strcmp(argv[c], "--service") == 0)
             WinServiceRun();
-
-        Optional<UINT> newTimerResolution;
-        boost::system::error_code dllError;
-        std::shared_ptr<boost::dll::shared_library> winmm(new boost::dll::shared_library("winmm.dll", dllError, boost::dll::load_mode::search_system_folders), [&](boost::dll::shared_library* lib)
-        {
-            try
-            {
-                if (newTimerResolution)
-                    lib->get<decltype(timeEndPeriod)>("timeEndPeriod")(*newTimerResolution);
-            }
-            catch (std::exception const&)
-            {
-                // ignore
-            }
-
-            delete lib;
-        });
-
-        if (winmm->is_loaded())
-        {
-            try
-            {
-                auto timeGetDevCapsPtr = winmm->get<decltype(timeGetDevCaps)>("timeGetDevCaps");
-
-                // setup timer resolution
-                TIMECAPS timeResolutionLimits;
-                if (timeGetDevCapsPtr(&timeResolutionLimits, sizeof(TIMECAPS)) == TIMERR_NOERROR)
-                {
-                    auto timeBeginPeriodPtr = winmm->get<decltype(timeBeginPeriod)>("timeBeginPeriod");
-                    newTimerResolution = std::min(std::max(timeResolutionLimits.wPeriodMin, 1u), timeResolutionLimits.wPeriodMax);
-                    timeBeginPeriodPtr(*newTimerResolution);
-                }
-            }
-            catch (std::exception const& e)
-            {
-                SYS_LOG_ERROR("Failed to initialize timer resolution: {}", e.what());
-            }
-        }
 #endif
         ++c;
     }
+
+#if WARHEAD_PLATFORM == WARHEAD_PLATFORM_WINDOWS
+    Optional<UINT> newTimerResolution;
+    boost::system::error_code dllError;
+
+    std::shared_ptr<boost::dll::shared_library> winmm(new boost::dll::shared_library("winmm.dll", dllError, boost::dll::load_mode::search_system_folders), [&](boost::dll::shared_library* lib)
+    {
+        try
+        {
+            if (newTimerResolution)
+                lib->get<decltype(timeEndPeriod)>("timeEndPeriod")(*newTimerResolution);
+        }
+        catch (std::exception const&)
+        {
+            // ignore
+        }
+
+        delete lib;
+    });
+
+    if (winmm->is_loaded())
+    {
+        try
+        {
+            auto timeGetDevCapsPtr = winmm->get<decltype(timeGetDevCaps)>("timeGetDevCaps");
+
+            // setup timer resolution
+            TIMECAPS timeResolutionLimits;
+            if (timeGetDevCapsPtr(&timeResolutionLimits, sizeof(TIMECAPS)) == TIMERR_NOERROR)
+            {
+                auto timeBeginPeriodPtr = winmm->get<decltype(timeBeginPeriod)>("timeBeginPeriod");
+                newTimerResolution = std::min(std::max(timeResolutionLimits.wPeriodMin, 1u), timeResolutionLimits.wPeriodMax);
+                timeBeginPeriodPtr(*newTimerResolution);
+            }
+        }
+        catch (std::exception const& e)
+        {
+            SYS_LOG_ERROR("Failed to initialize timer resolution: {}", e.what());
+        }
+    }
+#endif
 
     // Add file and args in config
     sConfigMgr->Configure(configFile, { argv, argv + argc }, CONFIG_FILE_LIST);
@@ -439,9 +441,6 @@ int main(int argc, char** argv)
         cliThread.reset(new std::thread(CliThread), &ShutdownCLIThread);
     }
 
-    // Start discord bot
-    sDiscord->Start();
-
     // Launch CliRunnable thread
     std::shared_ptr<std::thread> auctionLisingThread;
     auctionLisingThread.reset(new std::thread(AuctionListingRunnable),
@@ -450,8 +449,6 @@ int main(int argc, char** argv)
         thr->join();
         delete thr;
     });
-
-    sDiscord->SendServerStatus(true);
 
     WorldUpdateLoop();
 
@@ -464,8 +461,6 @@ int main(int argc, char** argv)
     LoginDatabase.DirectExecute("UPDATE realmlist SET flag = flag | {} WHERE id = '{}'", REALM_FLAG_OFFLINE, realm.Id.Realm);
 
     LOG_INFO("server.worldserver", "Halting process...");
-
-    sDiscord->SendServerStatus(false);
 
     // 0 - normal shutdown
     // 1 - shutdown at error

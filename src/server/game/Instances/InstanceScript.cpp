@@ -16,6 +16,7 @@
  */
 
 #include "InstanceScript.h"
+#include "ChatTextBuilder.h"
 #include "Creature.h"
 #include "CreatureAI.h"
 #include "DatabaseEnv.h"
@@ -409,6 +410,22 @@ void InstanceScript::DoRespawnGameObject(ObjectGuid uiGuid, uint32 uiTimeToDespa
     }
 }
 
+void InstanceScript::DoRespawnCreature(ObjectGuid guid, bool force)
+{
+    if (Creature* creature = instance->GetCreature(guid))
+    {
+        creature->Respawn(force);
+    }
+}
+
+void InstanceScript::DoRespawnCreature(uint32 type, bool force)
+{
+    if (Creature* creature = instance->GetCreature(GetObjectGuid(type)))
+    {
+        creature->Respawn(force);
+    }
+}
+
 void InstanceScript::DoUpdateWorldState(uint32 uiStateId, uint32 uiStateData)
 {
     Map::PlayerList const& lPlayers = instance->GetPlayers();
@@ -438,7 +455,7 @@ void InstanceScript::SendNotifyToInstance(std::string_view message)
         if (!player)
             continue;
 
-        player->GetSession()->SendNotification(message);
+        Warhead::Text::SendNotification(player->GetSession(), message);
     }
 }
 

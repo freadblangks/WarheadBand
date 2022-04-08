@@ -42,6 +42,7 @@ go_veil_skith_cage
 EndContentData */
 
 #include "CellImpl.h"
+#include "ChatTextBuilder.h"
 #include "GameObjectAI.h"
 #include "GameTime.h"
 #include "GridNotifiersImpl.h"
@@ -895,7 +896,7 @@ public:
                 if (player->GetQuestStatus(QUEST_THE_FIRST_TRIAL) == QUEST_STATUS_INCOMPLETE)
                 {
                     _playerGUID = player->GetGUID();
-                    me->SetFlag(GAMEOBJECT_FLAGS, 1);
+                    me->SetGameObjectFlag((GameObjectFlags)1);
                     me->RemoveByteFlag(GAMEOBJECT_BYTES_1, 0, 1);
                     _events.ScheduleEvent(EVENT_STILLBLADE_SPAWN, 1000);
                 }
@@ -922,7 +923,7 @@ public:
                 }
                 case EVENT_RESET_BRAZIER:
                 {
-                    me->RemoveFlag(GAMEOBJECT_FLAGS, 1);
+                    me->RemoveGameObjectFlag((GameObjectFlags)1);
                     me->SetByteFlag(GAMEOBJECT_BYTES_1, 0, 1);
                     break;
                 }
@@ -1120,7 +1121,7 @@ public:
         if (player->GetQuestRewardStatus(QUEST_TELE_CRYSTAL_FLAG))
             return false;
 
-        player->GetSession()->SendNotification(GO_TELE_TO_DALARAN_CRYSTAL_FAILED);
+        Warhead::Text::SendNotification(player->GetSession(), GO_TELE_TO_DALARAN_CRYSTAL_FAILED);
 
         return true;
     }
@@ -1661,7 +1662,7 @@ public:
         else
         {
             CloseGossipMenuFor(player);
-            player->GetSession()->SendNotification(GO_ANDERHOLS_SLIDER_CIDER_NOT_FOUND);
+            Warhead::Text::SendNotification(player->GetSession(), GO_ANDERHOLS_SLIDER_CIDER_NOT_FOUND);
             return false;
         }
     }

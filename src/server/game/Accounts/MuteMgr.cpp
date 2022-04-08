@@ -18,13 +18,13 @@
 #include "MuteMgr.h"
 #include "CharacterCache.h"
 #include "Chat.h"
+#include "ChatTextBuilder.h"
 #include "DatabaseEnv.h"
 #include "GameConfig.h"
 #include "GameTime.h"
 #include "Language.h"
 #include "ObjectMgr.h"
 #include "Player.h"
-#include "TextBuilder.h"
 #include "Timer.h"
 #include "World.h"
 
@@ -58,7 +58,7 @@ void MuteMgr::MutePlayer(std::string const& targetName, Seconds muteTime, std::s
     stmt->SetData(4, muteReason);
     LoginDatabase.Execute(stmt);
 
-    auto GetPlayerLink = [&]()
+    auto GetPlayerLink = [targetName]()
     {
         return "|cffffffff|Hplayer:" + targetName + "|h[" + targetName + "]|h|r";
     };
@@ -138,7 +138,7 @@ void MuteMgr::CheckMuteExpired(uint32 accountID)
 
 std::string const MuteMgr::GetMuteTimeString(uint32 accountID)
 {
-    return Warhead::Time::ToTimeString<Seconds>(GetMuteDate(accountID) - GameTime::GetGameTime().count());
+    return Warhead::Time::ToTimeString(Seconds(GetMuteDate(accountID) - GameTime::GetGameTime().count()));
 }
 
 bool MuteMgr::CanSpeak(uint32 accountID)

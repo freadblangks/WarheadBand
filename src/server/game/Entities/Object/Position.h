@@ -20,6 +20,7 @@
 
 #include "Common.h"
 #include "G3D/Vector3.h"
+#include <cmath>
 
 class ByteBuffer;
 

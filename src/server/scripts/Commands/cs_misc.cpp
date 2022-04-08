@@ -21,6 +21,7 @@
 #include "CellImpl.h"
 #include "CharacterCache.h"
 #include "Chat.h"
+#include "ChatTextBuilder.h"
 #include "GameConfig.h"
 #include "GameGraveyard.h"
 #include "GameLocale.h"
@@ -33,6 +34,7 @@
 #include "LFG.h"
 #include "Language.h"
 #include "MapMgr.h"
+#include "MiscPackets.h"
 #include "MovementGenerator.h"
 #include "MuteMgr.h"
 #include "ObjectAccessor.h"
@@ -43,7 +45,6 @@
 #include "ScriptMgr.h"
 #include "SpellAuras.h"
 #include "TargetedMovementGenerator.h"
-#include "TextBuilder.h"
 #include "Timer.h"
 #include "Tokenize.h"
 #include "WeatherMgr.h"
@@ -99,6 +100,7 @@ public:
             { "setskill",          HandleSetSkillCommand,          SEC_GAMEMASTER,         Console::No  },
             { "pinfo",             HandlePInfoCommand,             SEC_GAMEMASTER,         Console::Yes },
             { "respawn",           HandleRespawnCommand,           SEC_GAMEMASTER,         Console::No  },
+            { "respawn all",       HandleRespawnAllCommand,        SEC_GAMEMASTER,         Console::No  },
             { "mute",              HandleMuteCommand,              SEC_GAMEMASTER,         Console::Yes },
             { "mutehistory",       HandleMuteInfoCommand,          SEC_GAMEMASTER,         Console::Yes },
             { "unmute",            HandleUnmuteCommand,            SEC_GAMEMASTER,         Console::Yes },
@@ -392,7 +394,7 @@ public:
             return false;
         }
 
-        Battleground* bg = sBattlegroundMgr->CreateNewBattleground(randomizedArenaBgTypeId, 80, 80, ArenaType(hcnt >= 2 ? hcnt : 2), false);
+        Battleground* bg = sBattlegroundMgr->CreateNewBattleground(randomizedArenaBgTypeId, GetBattlegroundBracketById(bgt->GetMapId(), bgt->GetBracketId()), ArenaType(hcnt >= 2 ? hcnt : 2), false);
         if (!bg)
         {
             handler->PSendSysMessage("Couldn't create arena map!");
@@ -419,6 +421,9 @@ public:
             sBattlegroundMgr->BuildBattlegroundStatusPacket(&data, bg, queueSlot, STATUS_IN_PROGRESS, 0, bg->GetStartTime(), bg->GetArenaType(), teamId);
             player->GetSession()->SendPacket(&data);
 
+            // Remove from LFG queues
+            sLFGMgr->LeaveAllLfgQueues(player->GetGUID(), false);
+
             player->SetBattlegroundId(bg->GetInstanceID(), bgTypeId, queueSlot, true, false, teamId);
             sBattlegroundMgr->SendToBattleground(player, bg->GetInstanceID(), bgTypeId);
         }
@@ -438,7 +443,7 @@ public:
 
         auto SetDevMod = [&](bool enable)
         {
-            session->SendNotification(enable ? LANG_DEV_ON : LANG_DEV_OFF);
+            Warhead::Text::SendNotification(session, enable ? LANG_DEV_ON : LANG_DEV_OFF);
             session->GetPlayer()->SetDeveloper(enable);
             sScriptMgr->OnHandleDevCommand(handler->GetSession()->GetPlayer(), enable);
         };
@@ -1916,8 +1921,8 @@ public:
         uint32 mapId;
         uint32 areaId;
         uint32 phase            = 0;
-        char const* areaName    = nullptr;
-        char const* zoneName    = nullptr;
+        std::string areaName;
+        std::string zoneName;
 
         // Guild data print variables defined so that they exist, but are not necessarily used
         uint32 guildId           = 0;
@@ -2040,7 +2045,7 @@ public:
             muteTime = _muteTime;
 
             if (_muteDate)
-                muteLeft = Warhead::Time::ToTimeString<Seconds>(_muteDate + muteTime.count() - GameTime::GetGameTime().count());
+                muteLeft = Warhead::Time::ToTimeString(Seconds(_muteDate) + muteTime - GameTime::GetGameTime());
             else
                 muteLeft = Warhead::Time::ToTimeString(muteTime);
 
@@ -2124,7 +2129,7 @@ public:
 
         // Output III. LANG_PINFO_BANNED if ban exists and is applied
         if (banTime >= 0)
-            handler->PSendSysMessage(LANG_PINFO_BANNED, banType, banReason, banTime > 0 ? Warhead::Time::ToTimeString<Seconds>(banTime - GameTime::GetGameTime().count()) : handler->GetWarheadString(LANG_PERMANENTLY), bannedBy);
+            handler->PSendSysMessage(LANG_PINFO_BANNED, banType, banReason, banTime > 0 ? Warhead::Time::ToTimeString(Seconds(banTime) - GameTime::GetGameTime()) : handler->GetWarheadString(LANG_PERMANENTLY), bannedBy);
 
         // Output IV. LANG_PINFO_MUTED if mute is applied
         if (muteTime > 0s)
@@ -2196,12 +2201,12 @@ public:
             }
         }
 
-        if (!zoneName)
+        if (zoneName.empty())
         {
             zoneName = handler->GetWarheadString(LANG_UNKNOWN);
         }
 
-        if (areaName)
+        if (!areaName.empty())
         {
             handler->PSendSysMessage(LANG_PINFO_CHR_MAP_WITH_AREA, map->name[locale], zoneName, areaName);
         }
@@ -2214,7 +2219,7 @@ public:
         if (!guildName.empty())
         {
             handler->PSendSysMessage(LANG_PINFO_CHR_GUILD, guildName, guildId);
-            handler->PSendSysMessage(LANG_PINFO_CHR_GUILD_RANK, guildRank, uint32(guildRankId));
+            handler->PSendSysMessage(LANG_PINFO_CHR_GUILD_RANK, guildRank, guildRankId);
 
             if (!note.empty())
             {
@@ -2228,7 +2233,7 @@ public:
         }
 
         // Output XX. LANG_PINFO_CHR_PLAYEDTIME
-        handler->PSendSysMessage(LANG_PINFO_CHR_PLAYEDTIME, Warhead::Time::ToTimeString<Seconds>(totalPlayerTime));
+        handler->PSendSysMessage(LANG_PINFO_CHR_PLAYEDTIME, Warhead::Time::ToTimeString(Seconds(totalPlayerTime)));
 
         // Mail Data - an own query, because it may or may not be useful.
         // SQL: "SELECT SUM(CASE WHEN (checked & 1) THEN 1 ELSE 0 END) AS 'readmail', COUNT(*) AS 'totalmail' FROM mail WHERE `receiver` = ?"
@@ -2256,7 +2261,6 @@ public:
     {
         Player* player = handler->GetSession()->GetPlayer();
 
-        // accept only explicitly selected target (not implicitly self targeting case)
         Unit* target = handler->getSelectedUnit();
         if (player->GetTarget() && target)
         {
@@ -2273,6 +2277,15 @@ public:
             }
             return true;
         }
+
+        handler->SendSysMessage(LANG_SELECT_CREATURE);
+        handler->SetSentErrorMessage(true);
+        return false;
+    }
+
+    static bool HandleRespawnAllCommand(ChatHandler* handler)
+    {
+        Player* player = handler->GetSession()->GetPlayer();
 
         CellCoord p(Warhead::ComputeCellCoord(player->GetPositionX(), player->GetPositionY()));
         Cell cell(p);
@@ -2744,9 +2757,7 @@ public:
             return false;
         }
 
-        WorldPacket data(SMSG_PLAY_SOUND, 4);
-        data << uint32(soundId);
-        sWorld->SendGlobalMessage(&data);
+        sWorld->SendGlobalMessage(WorldPackets::Misc::Playsound(soundId).Write());
 
         handler->PSendSysMessage(LANG_COMMAND_PLAYED_TO_ALL, soundId);
         return true;
@@ -2816,9 +2827,9 @@ public:
             return false;
         }
 
-        const char* str = sGameLocale->GetWarheadString(id, locale ? static_cast<LocaleConstant>(*locale) : DEFAULT_LOCALE);
+        std::string str = sGameLocale->GetWarheadString(id, locale ? static_cast<LocaleConstant>(*locale) : DEFAULT_LOCALE);
 
-        if (!strcmp(str, "<error>"))
+        if (!StringEqualI(str, "<error>"))
         {
             handler->PSendSysMessage(LANG_NO_WARHEAD_STRING_FOUND, id);
             return true;

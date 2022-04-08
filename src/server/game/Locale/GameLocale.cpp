@@ -106,14 +106,14 @@ bool GameLocale::LoadWarheadStrings()
     return true;
 }
 
-char const* GameLocale::GetWarheadString(uint32 entry, LocaleConstant locale) const
+std::string GameLocale::GetWarheadString(uint32 entry, LocaleConstant locale) const
 {
     if (auto as = GetWarheadString(entry))
     {
         if (as->Content.size() > size_t(locale) && !as->Content[locale].empty())
-            return as->Content[locale].c_str();
+            return as->Content[locale];
 
-        return as->Content[DEFAULT_LOCALE].c_str();
+        return as->Content[DEFAULT_LOCALE];
     }
 
     LOG_ERROR("sql.sql", "Warhead string entry {} not found in DB.", entry);
@@ -751,7 +751,7 @@ void GameLocale::LoadQuestGreetingLocales()
 
         QuestGreetingLocale& data = _questGreetingLocaleStore[MAKE_PAIR32(id, type)];
 
-        Warhead::Locale::AddLocaleString(fields[3].Get<std::string>(), locale, data.greeting);
+        Warhead::Locale::AddLocaleString(fields[3].Get<std::string>(), locale, data.Greeting);
     } while (result->NextRow());
 
     LOG_INFO("server.loading", ">> Loaded {} quest greeting locale strings in {} ms", static_cast<uint32>(_questGreetingLocaleStore.size()), GetMSTimeDiffToNow(oldMSTime));
@@ -968,7 +968,7 @@ std::string const GameLocale::GetItemLink(uint32 itemID, int8 index_loc /*= DEFA
     std::string name = GetItemNameLocale(itemID, index_loc);
     uint32 color = ItemQualityColors[itemTemplate ? itemTemplate->Quality : uint32(ITEM_QUALITY_POOR)];
 
-    return Warhead::StringFormat("|c%08x|Hitem:{}:0:0:0:0:0:0:0:0|h[{}]|h|r", color, itemID, name);
+    return Warhead::StringFormat("|c{:08x}|Hitem:{}:0:0:0:0:0:0:0:0|h[{}]|h|r", color, itemID, name);
 }
 
 std::string const GameLocale::GetSpellLink(uint32 spellID, int8 index_loc /*= DEFAULT_LOCALE*/)

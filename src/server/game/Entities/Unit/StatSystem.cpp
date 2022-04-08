@@ -15,8 +15,8 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Creature.h"
 #include "Config.h"
+#include "Creature.h"
 #include "Pet.h"
 #include "Player.h"
 #include "ScriptMgr.h"
@@ -918,7 +918,7 @@ void Player::UpdateManaRegen()
 
     float Intellect = GetStat(STAT_INTELLECT);
     // Mana regen from spirit and intellect
-    float power_regen = sqrt(Intellect) * OCTRegenMPPerSpirit();
+    float power_regen = std::sqrt(Intellect) * OCTRegenMPPerSpirit();
     // Apply PCT bonus from SPELL_AURA_MOD_POWER_REGEN_PERCENT aura on spirit base regen
     power_regen *= GetTotalAuraMultiplierByMiscValue(SPELL_AURA_MOD_POWER_REGEN_PERCENT, POWER_MANA);
 

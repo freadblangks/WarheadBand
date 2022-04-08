@@ -17,6 +17,7 @@
 
 #include "AccountMgr.h"
 #include "CharacterCache.h"
+#include "ChatTextBuilder.h"
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
 #include "GameConfig.h"
@@ -120,7 +121,7 @@ void WorldSession::HandleSendMail(WorldPacket& recvData)
 
     if (player->getLevel() < CONF_GET_INT("LevelReq.Mail"))
     {
-        SendNotification(GetWarheadString(LANG_MAIL_SENDER_REQ), CONF_GET_INT("LevelReq.Mail"));
+        Warhead::Text::SendNotification(this, LANG_MAIL_SENDER_REQ, CONF_GET_INT("LevelReq.Mail"));
         return;
     }
 
@@ -629,7 +630,7 @@ void WorldSession::HandleGetMailList(WorldPacket& recvData)
         }
 
         // skip deleted or not delivered (deliver delay not expired) mails
-        if (mail->state == MAIL_STATE_DELETED || cur_time < mail->deliver_time)
+        if (mail->state == MAIL_STATE_DELETED || cur_time < mail->deliver_time || cur_time > mail->expire_time)
         {
             continue;
         }
@@ -814,8 +815,8 @@ void WorldSession::HandleQueryNextMailTime(WorldPacket& /*recvData*/)
             if (mail->checked & MAIL_CHECK_MASK_READ)
                 continue;
 
-            // and already delivered
-            if (now < mail->deliver_time)
+            // and already delivered or expired
+            if (now < mail->deliver_time || now > mail->expire_time)
                 continue;
 
             // only send each mail sender once

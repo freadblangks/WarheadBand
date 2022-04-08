@@ -44,7 +44,6 @@
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
 #include "DisableMgr.h"
-#include "Discord.h"
 #include "DynamicVisibility.h"
 #include "ExternalMail.h"
 #include "GameConfig.h"
@@ -64,6 +63,7 @@
 #include "Log.h"
 #include "LootItemStorage.h"
 #include "LootMgr.h"
+#include "M2Stores.h"
 #include "MMapFactory.h"
 #include "MapMgr.h"
 #include "Metric.h"
@@ -81,8 +81,8 @@
 #include "SkillExtraItems.h"
 #include "SmartAI.h"
 #include "SpellMgr.h"
+#include "StopWatch.h"
 #include "TaskScheduler.h"
-#include "TextBuilder.h"
 #include "TicketMgr.h"
 #include "Timer.h"
 #include "Tokenize.h"
@@ -555,7 +555,7 @@ void World::LoadConfigSettings(bool reload)
 void World::SetInitialWorldSettings()
 {
     ///- Server startup begin
-    uint32 startupBegin = getMSTime();
+    StopWatch sw;
 
     ///- Initialize the random number generator
     srand((unsigned int)GameTime::GetGameTime().count());
@@ -628,6 +628,9 @@ void World::SetInitialWorldSettings()
     LoadDBCStores(m_dataPath);
     DetectDBCLang();
 
+    // Load cinematic cameras
+    LoadM2Cameras(m_dataPath);
+
     // Load IP Location Database
     sIPLocation->Load();
 
@@ -645,14 +648,14 @@ void World::SetInitialWorldSettings()
     LOG_INFO("server.loading", "Loading Game Graveyard...");
     sGraveyard->LoadGraveyardFromDB();
 
-    LOG_INFO("server.loading", "Loading spell dbc data corrections...");
-    sSpellMgr->LoadDbcDataCorrections();
-
     LOG_INFO("server.loading", "Initializing PlayerDump tables...");
     PlayerDump::InitializeTables();
 
     LOG_INFO("server.loading", "Loading SpellInfo store...");
     sSpellMgr->LoadSpellInfoStore();
+
+    LOG_INFO("server.loading", "Loading SpellInfo data corrections...");
+    sSpellMgr->LoadSpellInfoCorrections();
 
     LOG_INFO("server.loading", "Loading Spell Rank Data...");
     sSpellMgr->LoadSpellRanks();
@@ -663,8 +666,8 @@ void World::SetInitialWorldSettings()
     LOG_INFO("server.loading", "Loading SkillLineAbilityMultiMap Data...");
     sSpellMgr->LoadSkillLineAbilityMap();
 
-    LOG_INFO("server.loading", "Loading spell custom attributes...");
-    sSpellMgr->LoadSpellCustomAttr();
+    LOG_INFO("server.loading", "Loading SpellInfo custom attributes...");
+    sSpellMgr->LoadSpellInfoCustomAttributes();
 
     LOG_INFO("server.loading", "Loading GameObject models...");
     LoadGameObjectModelList(m_dataPath);
@@ -816,6 +819,12 @@ void World::SetInitialWorldSettings()
 
     // Loading Quests Starters and Enders
     sObjectMgr->LoadQuestStartersAndEnders();                    // must be after quest load
+
+    LOG_INFO("server.loading", "Loading Quest Greetings...");
+    sObjectMgr->LoadQuestGreetings();                               // must be loaded after creature_template, gameobject_template tables
+
+    //LOG_INFO("server.loading", "Loading Quest Greeting Locales...");
+    //sObjectMgr->LoadQuestGreetingsLocales();                        // must be loaded after creature_template, gameobject_template tables
 
     LOG_INFO("server.loading", "Loading Quest Money Rewards...");
     sObjectMgr->LoadQuestMoneyRewards();
@@ -1119,7 +1128,7 @@ void World::SetInitialWorldSettings()
 
     ///- Initialize Battlegrounds
     LOG_INFO("server.loading", "Starting Battleground System");
-    sBattlegroundMgr->CreateInitialBattlegrounds();
+    sBattlegroundMgr->LoadBattlegroundTemplates();
     sBattlegroundMgr->InitAutomaticArenaPointDistribution();
 
     ///- Initialize outdoor pvp
@@ -1203,13 +1212,13 @@ void World::SetInitialWorldSettings()
         }
     }
 
-    uint32 startupDuration = GetMSTimeDiffToNow(startupBegin);
+    std::string startupDuration = Warhead::Time::ToTimeString(sw.Elapsed(), sw.GetOutCount());
 
     LOG_INFO("server.loading", " ");
-    LOG_INFO("server.loading", "WORLD: World initialized in {} minutes {} seconds", (startupDuration / 60000), ((startupDuration % 60000) / 1000)); // outError for red color in console
+    LOG_INFO("server.loading", "WORLD: World initialized in {}", startupDuration); // outError for red color in console
     LOG_INFO("server.loading", " ");
 
-    METRIC_EVENT("events", "World initialized", "World initialized in " + std::to_string(startupDuration / 60000) + " minutes " + std::to_string((startupDuration % 60000) / 1000) + " seconds");
+    METRIC_EVENT("events", "World initialized", "World initialized in " + startupDuration);
 
     if (sConfigMgr->isDryRun())
     {
@@ -1561,21 +1570,15 @@ void World::SendGlobalGMMessage(WorldPacket const* packet, WorldSession* self, T
 }
 
 /// DEPRECATED, only for debug purpose. Send a System Message to all players (except self if mentioned)
-void World::SendGlobalText(const char* text, WorldSession* self)
+void World::SendGlobalText(std::string_view text, WorldSession* self)
 {
     WorldPacket data;
 
-    // need copy to prevent corruption by strtok call in LineFromMessage original string
-    char* buf = strdup(text);
-    char* pos = buf;
-
-    while (char* line = ChatHandler::LineFromMessage(pos))
+    for (std::string_view line : Warhead::Tokenize(text, '\n', true))
     {
         ChatHandler::BuildChatPacket(data, CHAT_MSG_SYSTEM, LANG_UNIVERSAL, nullptr, nullptr, line);
         SendGlobalMessage(&data, self);
     }
-
-    free(buf);
 }
 
 /// Send a packet to all players (or players selected team) in the zone (except self if mentioned)
@@ -1602,7 +1605,7 @@ bool World::SendZoneMessage(uint32 zone, WorldPacket const* packet, WorldSession
 }
 
 /// Send a System Message to all players in the zone (except self if mentioned)
-void World::SendZoneText(uint32 zone, const char* text, WorldSession* self, TeamId teamId)
+void World::SendZoneText(uint32 zone, std::string_view text, WorldSession* self, TeamId teamId)
 {
     WorldPacket data;
     ChatHandler::BuildChatPacket(data, CHAT_MSG_SYSTEM, LANG_UNIVERSAL, nullptr, nullptr, text);
@@ -1697,9 +1700,9 @@ void World::ShutdownServ(uint32 time, uint32 options, uint8 exitcode, const std:
         });
     }
 
-    LOG_WARN("server", "Time left until shutdown/restart: {}", time);
+    std::string strTime = Warhead::Time::ToTimeString(Seconds(time));
 
-    sDiscord->SendDefaultMessage("Рестарт сервера", Warhead::StringFormat("Рестарт сервера через {} сек.", time), DiscordMessageColor::Yellow);
+    LOG_WARN("server", "> Time left until shutdown/restart: {}", strTime);
 
     ///- If the shutdown time is 0, set m_stopEvent (except if shutdown is 'idle' with remaining sessions)
     if (time == 0)
@@ -1734,7 +1737,7 @@ void World::ShutdownMsg(bool show, Player* player, const std::string& reason)
             (m_ShutdownTimer < 12 * HOUR && (m_ShutdownTimer % HOUR) == 0) || // < 12 h ; every 1 h
             (m_ShutdownTimer > 12 * HOUR && (m_ShutdownTimer % (12 * HOUR)) == 0)) // > 12 h ; every 12 h
     {
-        std::string str = Warhead::Time::ToTimeString<Seconds>(m_ShutdownTimer).append(".");
+        std::string str = Warhead::Time::ToTimeString(Seconds(m_ShutdownTimer)).append(".");
 
         if (!reason.empty())
         {
@@ -1900,12 +1903,7 @@ void World::_UpdateRealmCharCount(PreparedQueryResult resultCharCount)
 
         LoginDatabaseTransaction trans = LoginDatabase.BeginTransaction();
 
-        LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_DEL_REALM_CHARACTERS_BY_REALM);
-        stmt->SetData(0, accountId);
-        stmt->SetData(1, realm.Id.Realm);
-        trans->Append(stmt);
-
-        stmt = LoginDatabase.GetPreparedStatement(LOGIN_INS_REALM_CHARACTERS);
+        LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_REP_REALM_CHARACTERS);
         stmt->SetData(0, charCount);
         stmt->SetData(1, accountId);
         stmt->SetData(2, realm.Id.Realm);
@@ -2184,7 +2182,7 @@ void World::LoadWorldStates()
 
     if (!result)
     {
-        LOG_INFO("server.loading", ">> Loaded 0 world states. DB table `worldstates` is empty!");
+        LOG_WARN("server.loading", ">> Loaded 0 world states. DB table `worldstates` is empty!");
         LOG_INFO("server.loading", " ");
         return;
     }

@@ -222,7 +222,10 @@ public:
         handler->PSendSysMessage("CharacterDatabase queue size: {}", CharacterDatabase.QueueSize());
         handler->PSendSysMessage("WorldDatabase queue size: {}", WorldDatabase.QueueSize());
 
-        handler->SendSysMessage("> List enable modules:");
+        if (Warhead::Module::GetEnableModulesList().empty())
+            handler->SendSysMessage("No modules enabled");
+        else
+            handler->SendSysMessage("> List enable modules:");
 
         for (auto const& modName : Warhead::Module::GetEnableModulesList())
         {
@@ -239,7 +242,7 @@ public:
         uint32 activeSessionCount = sWorld->GetActiveSessionCount();
         uint32 queuedSessionCount = sWorld->GetQueuedSessionCount();
         uint32 connPeak = sWorld->GetMaxActiveSessionCount();
-        std::string uptime = Warhead::Time::ToTimeString<Seconds>(GameTime::GetUptime().count());
+        std::string uptime = Warhead::Time::ToTimeString(GameTime::GetUptime());
 
         handler->PSendSysMessage("{}", GitRevision::GetFullVersion());
 
@@ -254,7 +257,7 @@ public:
 
         //! Can't use sWorld->ShutdownMsg here in case of console command
         if (sWorld->IsShuttingDown())
-            handler->PSendSysMessage(LANG_SHUTDOWN_TIMELEFT, Warhead::Time::ToTimeString<Seconds>(sWorld->GetShutDownTimeLeft()));
+            handler->PSendSysMessage(LANG_SHUTDOWN_TIMELEFT, Warhead::Time::ToTimeString(Seconds(sWorld->GetShutDownTimeLeft())));
 
         return true;
     }
