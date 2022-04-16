@@ -49,7 +49,7 @@ ClientSocket::ClientSocket(tcp::socket&& socket) :
 
 void ClientSocket::Start()
 {
-    LOG_INFO("module.discord", "Start process auth from server. Account name '{}'", sDiscord->GetAccountName());
+    LOG_DEBUG("module.discord", "Start process auth from server. Account name '{}'", sDiscord->GetAccountName());
     SendAuthSession();
 }
 
@@ -221,8 +221,9 @@ void ClientSocket::SendPacket(DiscordPacket const* packet)
     DiscordServerPktHeader header(packet->size() + sizeof(packet->GetOpcode()), packet->GetOpcode());
     if (buffer.GetRemainingSpace() < packet->size() + header.GetHeaderLength())
     {
-        QueuePacket(std::move(buffer));
-        //buffer.Resize(4096);
+        MessageBuffer packetBuffer(buffer);
+        QueuePacket(std::move(packetBuffer));
+        buffer.Resize(4096);
     }
 
     if (buffer.GetRemainingSpace() >= packet->size() + header.GetHeaderLength())
@@ -264,7 +265,7 @@ void ClientSocket::HandleAuthResponce(DiscordPacket& packet)
 
     if (responseCode != DiscordAuthResponseCodes::Ok)
     {
-        LOG_INFO("module.discord", "Auth incorrect. Code {}", codeString);
+        LOG_ERROR("module.discord", "Auth incorrect. Code {}", codeString);
         sClientSocketMgr->Disconnect();
         return;
     }
@@ -297,7 +298,7 @@ void ClientSocket::HandlePong(DiscordPacket& packet)
     Microseconds timeNow = duration_cast<Microseconds>(steady_clock::now().time_since_epoch());
     _latency = duration_cast<Microseconds>(timeNow - Microseconds(timePacket));
 
-    LOG_INFO("module.discord", "> Latency {}", Warhead::Time::ToTimeString(_latency));
+    LOG_TRACE("module.discord", "> Latency {}", Warhead::Time::ToTimeString(_latency));
 }
 
 void ClientSocket::SendAuthSession()

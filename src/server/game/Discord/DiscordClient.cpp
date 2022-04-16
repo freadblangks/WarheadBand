@@ -164,10 +164,10 @@ void DiscordClient::LogLogin(Player* player)
     auto security = player->GetSession()->GetSecurity();
     auto title = "Вход в игровой мир";
 
-    if (security > SEC_PLAYER)
-        channelID = DiscordLoginChannelType::GM;
-    else if (security >= SEC_ADMINISTRATOR)
+    if (security >= SEC_ADMINISTRATOR)
         channelID = DiscordLoginChannelType::Admin;
+    else if (security > SEC_PLAYER)
+        channelID = DiscordLoginChannelType::GM;
 
     std::string accountName;
     AccountMgr::GetName(accountID, accountName);
@@ -217,6 +217,9 @@ void DiscordClient::LogLogin(Player* player)
 
 void DiscordClient::SendDefaultMessage(int64 channelID, std::string_view message)
 {
+    if (!_isEnable)
+        return;
+
     DiscordPacket packet(CLIENT_SEND_MESSAGE);
     packet << int64(channelID);
     packet << message;
@@ -225,6 +228,9 @@ void DiscordClient::SendDefaultMessage(int64 channelID, std::string_view message
 
 void DiscordClient::SendEmbedMessage(int64 channelID, DiscordMessageColor color, std::string_view title, std::string_view description, DiscordEmbedFields const* fields)
 {
+    if (!_isEnable)
+        return;
+
     if (fields && fields->size() > WARHEAED_DISCORD_MAX_EMBED_FIELDS)
     {
         LOG_ERROR("module.discord", "> Try send incorrect embed message. Fields size ({}) > {}", fields->size(), WARHEAED_DISCORD_MAX_EMBED_FIELDS);
